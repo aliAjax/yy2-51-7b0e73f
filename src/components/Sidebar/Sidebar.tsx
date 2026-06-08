@@ -1,0 +1,130 @@
+import { BookOpen, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useDreamStore } from '@/store/dreamStore';
+import { hexToRgba } from '@/utils/storage';
+
+export function Sidebar() {
+  const locations = useDreamStore((state) => state.locations);
+  const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
+  const selectLocation = useDreamStore((state) => state.selectLocation);
+  const openForm = useDreamStore((state) => state.openForm);
+  const isSidebarOpen = useDreamStore((state) => state.isSidebarOpen);
+  const toggleSidebar = useDreamStore((state) => state.toggleSidebar);
+
+  return (
+    <>
+      <div
+        className={`absolute top-0 left-0 h-full z-20 transition-all duration-300 ease-out ${
+          isSidebarOpen ? 'w-64' : 'w-0'
+        }`}
+      >
+        <div
+          className={`h-full flex flex-col overflow-hidden transition-opacity duration-200 ${
+            isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+          style={{
+            background: 'linear-gradient(180deg, rgba(20, 20, 50, 0.95) 0%, rgba(10, 10, 30, 0.98) 100%)',
+            backdropFilter: 'blur(15px)',
+            borderRight: '1px solid rgba(150, 130, 200, 0.15)',
+            boxShadow: '5px 0 30px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <div className="p-5 border-b border-purple-300/10">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(155, 89, 182, 0.3) 0%, rgba(100, 50, 150, 0.3) 100%)',
+                  border: '1px solid rgba(155, 89, 182, 0.3)',
+                }}
+              >
+                <BookOpen size={20} className="text-purple-300" />
+              </div>
+              <div>
+                <h2 className="text-sm font-serif text-white font-medium">梦境档案</h2>
+                <p className="text-xs text-purple-300/50">
+                  {locations.length} 个地点
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3">
+            <button
+              onClick={() => openForm()}
+              className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-all hover:scale-105"
+              style={{
+                background: 'linear-gradient(135deg, rgba(155, 89, 182, 0.5) 0%, rgba(100, 50, 150, 0.5) 100%)',
+                border: '1px solid rgba(155, 89, 182, 0.4)',
+              }}
+            >
+              <Plus size={16} />
+              记录新地点
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
+            {locations.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-xs text-purple-300/40 italic">档案为空</p>
+                <p className="text-xs text-purple-300/30 mt-1">点击上方按钮记录</p>
+              </div>
+            ) : (
+              locations.map((location) => (
+                <button
+                  key={location.id}
+                  onClick={() => selectLocation(location.id)}
+                  className={`w-full p-3 rounded-lg text-left transition-all group ${
+                    selectedLocationId === location.id
+                      ? 'bg-white/10'
+                      : 'hover:bg-white/5'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0 transition-transform group-hover:scale-125"
+                      style={{
+                        backgroundColor: location.emotionColor,
+                        boxShadow: `0 0 8px ${hexToRgba(location.emotionColor, 0.6)}`,
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-sm truncate ${
+                          selectedLocationId === location.id
+                            ? 'text-white'
+                            : 'text-purple-100/80'
+                        }`}
+                      >
+                        {location.name}
+                      </p>
+                      <p className="text-xs text-purple-300/40 truncate">
+                        {location.frequency}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={toggleSidebar}
+        className="absolute top-1/2 z-20 -translate-y-1/2 w-6 h-20 flex items-center justify-center text-purple-300/50 hover:text-purple-200 transition-all hover:bg-white/5 rounded-r-lg"
+        style={{
+          left: isSidebarOpen ? '16rem' : '0',
+          background: 'rgba(20, 20, 50, 0.8)',
+          border: '1px solid rgba(150, 130, 200, 0.15)',
+          borderLeft: 'none',
+        }}
+      >
+        {isSidebarOpen ? (
+          <ChevronLeft size={16} />
+        ) : (
+          <ChevronRight size={16} />
+        )}
+      </button>
+    </>
+  );
+}

@@ -102,6 +102,8 @@ export function RelationLines({ locations }: RelationLinesProps) {
   return (
     <svg
       className="absolute inset-0 w-full h-full pointer-events-none z-5"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
       style={{ overflow: 'visible' }}
     >
       <defs>
@@ -128,7 +130,7 @@ export function RelationLines({ locations }: RelationLinesProps) {
         const dimmed = isRelationDimmed(rel);
         const hovered = hoveredRelationId === rel.id;
 
-        const strokeWidth = highlighted ? 3 : 2;
+        const strokeWidth = highlighted ? 0.55 : 0.35;
         const opacity = dimmed ? 0.15 : highlighted ? 0.9 : 0.4;
         const labelVisible = highlighted || hovered;
 
@@ -145,7 +147,7 @@ export function RelationLines({ locations }: RelationLinesProps) {
               d={path}
               fill="none"
               stroke="transparent"
-              strokeWidth={16}
+              strokeWidth={3}
               style={{
                 cursor: 'pointer',
                 pointerEvents: 'stroke',
@@ -201,24 +203,24 @@ export function RelationLines({ locations }: RelationLinesProps) {
               <g>
                 <rect
                   x={midPoint.x}
-                  y={midPoint.y - 10}
-                  width={rel.type.length * 14 + 16}
-                  height={20}
-                  rx={10}
+                  y={midPoint.y - 1.6}
+                  width={rel.type.length * 1.4 + 2}
+                  height={3.2}
+                  rx={1.6}
                   fill={hexToRgba('#1a1a35', 0.9)}
                   stroke={hexToRgba(color, 0.4)}
-                  strokeWidth={1}
+                  strokeWidth={0.15}
                   style={{
-                    transform: `translate(${-rel.type.length * 7 - 8}px, 0)`,
+                    transform: `translate(${-rel.type.length * 0.7 - 1}px, 0)`,
                     backdropFilter: 'blur(4px)',
                   }}
                 />
                 <text
                   x={midPoint.x}
-                  y={midPoint.y + 4}
+                  y={midPoint.y + 0.8}
                   textAnchor="middle"
                   fill={color}
-                  fontSize={11}
+                  fontSize={1.8}
                   fontWeight={500}
                   style={{
                     pointerEvents: 'none',

@@ -1,11 +1,29 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { SearchX } from 'lucide-react';
 import { DreamNode } from './DreamNode';
+import { MapControls } from './MapControls';
 import { RelationLines } from './RelationLines';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 2.5;
+const ZOOM_STEP = 0.2;
+const FIT_PADDING = 80;
+
+function clampScale(scale: number) {
+  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+}
+
 export function DreamMap() {
   const mapRef = useRef<HTMLDivElement>(null);
+  const panStartRef = useRef<{ x: number; y: number; translateX: number; translateY: number } | null>(null);
+  const isPanningRef = useRef(false);
+  const [viewTransform, setViewTransform] = useState({
+    scale: 1,
+    translateX: 0,
+    translateY: 0,
+  });
+  const [isPanning, setIsPanning] = useState(false);
   const locations = useDreamStore((state) => state.locations);
   const filters = useDreamStore((state) => state.filters);
   const clearFilters = useDreamStore((state) => state.clearFilters);
@@ -96,7 +114,129 @@ export function DreamMap() {
 
   const selectRelation = useDreamStore((state) => state.selectRelation);
 
+  const zoomAtPoint = useCallback((nextScale: number, pointX?: number, pointY?: number) => {
+    const container = mapRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const focalX = pointX ?? rect.width / 2;
+    const focalY = pointY ?? rect.height / 2;
+
+    setViewTransform((current) => {
+      const scale = clampScale(nextScale);
+      const scaleRatio = scale / current.scale;
+
+      return {
+        scale,
+        translateX: focalX - (focalX - current.translateX) * scaleRatio,
+        translateY: focalY - (focalY - current.translateY) * scaleRatio,
+      };
+    });
+  }, []);
+
+  const handleZoomIn = useCallback(() => {
+    zoomAtPoint(viewTransform.scale + ZOOM_STEP);
+  }, [viewTransform.scale, zoomAtPoint]);
+
+  const handleZoomOut = useCallback(() => {
+    zoomAtPoint(viewTransform.scale - ZOOM_STEP);
+  }, [viewTransform.scale, zoomAtPoint]);
+
+  const handleResetView = useCallback(() => {
+    setViewTransform({
+      scale: 1,
+      translateX: 0,
+      translateY: 0,
+    });
+  }, []);
+
+  const handleFitAll = useCallback(() => {
+    const container = mapRef.current;
+    if (!container || filteredLocations.length === 0) {
+      handleResetView();
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const minX = Math.min(...filteredLocations.map((location) => location.positionX));
+    const maxX = Math.max(...filteredLocations.map((location) => location.positionX));
+    const minY = Math.min(...filteredLocations.map((location) => location.positionY));
+    const maxY = Math.max(...filteredLocations.map((location) => location.positionY));
+    const contentMinX = (minX / 100) * rect.width;
+    const contentMaxX = (maxX / 100) * rect.width;
+    const contentMinY = (minY / 100) * rect.height;
+    const contentMaxY = (maxY / 100) * rect.height;
+    const contentWidth = Math.max(contentMaxX - contentMinX, 1);
+    const contentHeight = Math.max(contentMaxY - contentMinY, 1);
+    const availableWidth = Math.max(rect.width - FIT_PADDING * 2, rect.width * 0.4);
+    const availableHeight = Math.max(rect.height - FIT_PADDING * 2, rect.height * 0.4);
+    const scale = clampScale(Math.min(availableWidth / contentWidth, availableHeight / contentHeight));
+
+    setViewTransform({
+      scale,
+      translateX: (rect.width - contentWidth * scale) / 2 - contentMinX * scale,
+      translateY: (rect.height - contentHeight * scale) / 2 - contentMinY * scale,
+    });
+  }, [filteredLocations, handleResetView]);
+
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const direction = e.deltaY > 0 ? -1 : 1;
+    const nextScale = viewTransform.scale + direction * ZOOM_STEP;
+    zoomAtPoint(nextScale, e.clientX - rect.left, e.clientY - rect.top);
+  }, [viewTransform.scale, zoomAtPoint]);
+
+  const handleMapMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+
+    panStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      translateX: viewTransform.translateX,
+      translateY: viewTransform.translateY,
+    };
+    isPanningRef.current = false;
+  }, [viewTransform.translateX, viewTransform.translateY]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const start = panStartRef.current;
+      if (!start) return;
+
+      const deltaX = e.clientX - start.x;
+      const deltaY = e.clientY - start.y;
+      if (!isPanningRef.current && Math.hypot(deltaX, deltaY) < 4) return;
+
+      isPanningRef.current = true;
+      setIsPanning(true);
+      setViewTransform((current) => ({
+        ...current,
+        translateX: start.translateX + deltaX,
+        translateY: start.translateY + deltaY,
+      }));
+    };
+
+    const handleMouseUp = () => {
+      panStartRef.current = null;
+      setIsPanning(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   const handleMapClick = () => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      return;
+    }
+
     selectLocation(null);
     selectRelation(null);
   };
@@ -104,8 +244,10 @@ export function DreamMap() {
   return (
     <div
       ref={mapRef}
-      className="relative w-full h-full"
+      className={`relative w-full h-full ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onClick={handleMapClick}
+      onMouseDown={handleMapMouseDown}
+      onWheel={handleWheel}
       style={{
         background: 'radial-gradient(ellipse at center, #1a1a3e 0%, #0d0d1f 50%, #050510 100%)',
       }}
@@ -164,11 +306,29 @@ export function DreamMap() {
         </div>
       )}
 
-      <RelationLines locations={filteredLocations} />
+      <div
+        className="absolute inset-0 z-10"
+        style={{
+          transform: `translate(${viewTransform.translateX}px, ${viewTransform.translateY}px) scale(${viewTransform.scale})`,
+          transformOrigin: '0 0',
+        }}
+      >
+        <RelationLines locations={filteredLocations} />
 
-      {filteredLocations.map((location) => (
-        <DreamNode key={location.id} location={location} />
-      ))}
+        {filteredLocations.map((location) => (
+          <DreamNode key={location.id} location={location} />
+        ))}
+      </div>
+
+      <MapControls
+        scale={viewTransform.scale}
+        minScale={MIN_SCALE}
+        maxScale={MAX_SCALE}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onReset={handleResetView}
+        onFitAll={handleFitAll}
+      />
     </div>
   );
 }

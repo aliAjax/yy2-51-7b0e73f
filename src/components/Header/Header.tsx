@@ -1,5 +1,6 @@
 import { Moon, Plus } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
+import { ImportExport } from '@/components/ImportExport/ImportExport';
 
 export function Header() {
   const locations = useDreamStore((state) => state.locations);
@@ -40,6 +41,8 @@ export function Header() {
               梦境地点
             </p>
           </div>
+
+          <ImportExport />
 
           <button
             onClick={() => openForm()}

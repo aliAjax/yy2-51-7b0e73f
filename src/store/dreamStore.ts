@@ -57,6 +57,8 @@ interface DreamActions {
   setFrequencyFilter: (frequency: string) => void;
   clearFilters: () => void;
   getFilteredLocations: () => DreamLocation[];
+  importLocations: (imported: DreamLocation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
+  exportLocations: () => DreamLocation[];
 }
 
 export type DreamStore = DreamState & DreamActions;
@@ -188,6 +190,43 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
   getFilteredLocations: () => {
     return filterLocations(get().locations, get().filters);
+  },
+
+  importLocations: (imported, mode) => {
+    const currentLocations = get().locations;
+    let added = 0;
+    let updated = 0;
+
+    if (mode === 'replace') {
+      set({ locations: imported, selectedLocationId: null });
+      saveDreamLocations(imported);
+      added = imported.length;
+      return { added, updated: 0, skipped: 0 };
+    }
+
+    const existingMap = new Map(currentLocations.map((loc) => [loc.id, loc]));
+    const result: DreamLocation[] = [...currentLocations];
+
+    imported.forEach((item) => {
+      if (existingMap.has(item.id)) {
+        const index = result.findIndex((loc) => loc.id === item.id);
+        if (index !== -1) {
+          result[index] = { ...item, updatedAt: new Date().toISOString() };
+          updated++;
+        }
+      } else {
+        result.push(item);
+        added++;
+      }
+    });
+
+    set({ locations: result });
+    saveDreamLocations(result);
+    return { added, updated, skipped: 0 };
+  },
+
+  exportLocations: () => {
+    return get().locations;
   },
 }));
 

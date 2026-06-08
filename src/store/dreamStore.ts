@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import type { DreamLocation } from '@/types';
-import { loadDreamLocations, saveDreamLocations, generateId } from '@/utils/storage';
+import { loadDreamLocations, saveDreamLocations, generateId, normalizeDreamLocation, normalizeTags } from '@/utils/storage';
 
 export function filterLocations(
   locations: DreamLocation[],
-  filters: { searchText: string; frequency: string }
+  filters: { searchText: string; frequency: string; tag: string }
 ): DreamLocation[] {
-  const { searchText, frequency } = filters;
+  const { searchText, frequency, tag } = filters;
 
   return locations.filter((location) => {
     if (searchText) {
@@ -16,12 +16,17 @@ export function filterLocations(
       const matchName = location.name.toLowerCase().includes(lowerSearch);
       const matchAtmosphere = location.atmosphere.toLowerCase().includes(lowerSearch);
       const matchPeople = location.relatedPeople.toLowerCase().includes(lowerSearch);
-      if (!matchName && !matchAtmosphere && !matchPeople) {
+      const matchTag = location.tags.some((item) => item.toLowerCase().includes(lowerSearch));
+      if (!matchName && !matchAtmosphere && !matchPeople && !matchTag) {
         return false;
       }
     }
 
     if (frequency && location.frequency !== frequency) {
+      return false;
+    }
+
+    if (tag && !location.tags.includes(tag)) {
       return false;
     }
 
@@ -32,6 +37,7 @@ export function filterLocations(
 interface FilterState {
   searchText: string;
   frequency: string;
+  tag: string;
 }
 
 interface DreamState {
@@ -55,6 +61,7 @@ interface DreamActions {
   setSidebarOpen: (open: boolean) => void;
   setSearchText: (text: string) => void;
   setFrequencyFilter: (frequency: string) => void;
+  setTagFilter: (tag: string) => void;
   clearFilters: () => void;
   getFilteredLocations: () => DreamLocation[];
   importLocations: (imported: DreamLocation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
@@ -72,6 +79,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   filters: {
     searchText: '',
     frequency: '',
+    tag: '',
   },
 
   addLocation: (data) => {
@@ -84,6 +92,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       relatedPeople: data.relatedPeople,
       memoryFragment: data.memoryFragment,
       emotionColor: data.emotionColor,
+      tags: normalizeTags(data.tags),
       positionX: data.positionX ?? Math.random() * 60 + 20,
       positionY: data.positionY ?? Math.random() * 60 + 20,
       createdAt: now,
@@ -97,7 +106,12 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   updateLocation: (id, data) => {
     const newLocations = get().locations.map((loc) =>
       loc.id === id
-        ? { ...loc, ...data, updatedAt: new Date().toISOString() }
+        ? {
+            ...loc,
+            ...data,
+            tags: data.tags ? normalizeTags(data.tags) : loc.tags,
+            updatedAt: new Date().toISOString(),
+          }
         : loc
     );
     set({ locations: newLocations });
@@ -179,11 +193,27 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     });
   },
 
+  setTagFilter: (tag) => {
+    set((state) => {
+      const newFilters = { ...state.filters, tag };
+      const filtered = filterLocations(state.locations, newFilters);
+      const selectedStillExists = state.selectedLocationId
+        ? filtered.some((loc) => loc.id === state.selectedLocationId)
+        : true;
+
+      return {
+        filters: newFilters,
+        selectedLocationId: selectedStillExists ? state.selectedLocationId : null,
+      };
+    });
+  },
+
   clearFilters: () => {
     set({
       filters: {
         searchText: '',
         frequency: '',
+        tag: '',
       },
     });
   },
@@ -194,20 +224,23 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
   importLocations: (imported, mode) => {
     const currentLocations = get().locations;
+    const normalizedImported = imported
+      .map((item) => normalizeDreamLocation(item))
+      .filter((item): item is DreamLocation => item !== null);
     let added = 0;
     let updated = 0;
 
     if (mode === 'replace') {
-      set({ locations: imported, selectedLocationId: null });
-      saveDreamLocations(imported);
-      added = imported.length;
+      set({ locations: normalizedImported, selectedLocationId: null });
+      saveDreamLocations(normalizedImported);
+      added = normalizedImported.length;
       return { added, updated: 0, skipped: 0 };
     }
 
     const existingMap = new Map(currentLocations.map((loc) => [loc.id, loc]));
     const result: DreamLocation[] = [...currentLocations];
 
-    imported.forEach((item) => {
+    normalizedImported.forEach((item) => {
       if (existingMap.has(item.id)) {
         const index = result.findIndex((loc) => loc.id === item.id);
         if (index !== -1) {

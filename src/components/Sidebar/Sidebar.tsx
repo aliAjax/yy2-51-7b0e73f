@@ -19,7 +19,7 @@ export function Sidebar() {
     [locations, filters]
   );
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || !!filters.tag;
   const hasResults = filteredLocations.length > 0;
 
   return (
@@ -132,6 +132,24 @@ export function Sidebar() {
                       <p className="text-xs text-purple-300/40 truncate">
                         {location.frequency}
                       </p>
+                      {location.tags.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {location.tags.slice(0, 2).map((tag) => (
+                            <span
+                              key={tag}
+                              className="max-w-[5.5rem] truncate rounded bg-purple-300/10 px-1.5 py-0.5 text-[10px] text-purple-200/65"
+                              title={tag}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {location.tags.length > 2 && (
+                            <span className="rounded bg-purple-300/10 px-1.5 py-0.5 text-[10px] text-purple-200/45">
+                              +{location.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </button>

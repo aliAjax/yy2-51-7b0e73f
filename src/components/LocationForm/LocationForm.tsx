@@ -33,6 +33,7 @@ export function LocationForm() {
     relatedPeople: '',
     memoryFragment: '',
     emotionColor: '#9b59b6',
+    tags: '',
   });
 
   const [errors, setErrors] = useState<{ name?: string }>({});
@@ -46,6 +47,7 @@ export function LocationForm() {
         relatedPeople: editingLocation.relatedPeople,
         memoryFragment: editingLocation.memoryFragment,
         emotionColor: editingLocation.emotionColor,
+        tags: editingLocation.tags.join(', '),
       });
     } else {
       setFormData({
@@ -55,6 +57,7 @@ export function LocationForm() {
         relatedPeople: '',
         memoryFragment: '',
         emotionColor: PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
+        tags: '',
       });
     }
     setErrors({});
@@ -67,6 +70,17 @@ export function LocationForm() {
     if (errors[field as keyof typeof errors]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     }
+  };
+
+  const parseTags = (value: string) => {
+    return Array.from(
+      new Set(
+        value
+          .split(/[,，\n]/)
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      )
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -85,6 +99,7 @@ export function LocationForm() {
         relatedPeople: formData.relatedPeople.trim(),
         memoryFragment: formData.memoryFragment.trim(),
         emotionColor: formData.emotionColor,
+        tags: parseTags(formData.tags),
       });
     } else {
       addLocation({
@@ -94,6 +109,7 @@ export function LocationForm() {
         relatedPeople: formData.relatedPeople.trim(),
         memoryFragment: formData.memoryFragment.trim(),
         emotionColor: formData.emotionColor,
+        tags: parseTags(formData.tags),
       });
     }
 
@@ -239,6 +255,18 @@ export function LocationForm() {
               placeholder="梦里出现的人..."
               className="w-full px-4 py-3 rounded-lg text-white placeholder-purple-300/30 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-purple-200/70 block">梦境标签</label>
+            <input
+              type="text"
+              value={formData.tags}
+              onChange={(e) => handleChange('tags', e.target.value)}
+              placeholder="比如：迷宫, 飞行, 海边"
+              className="w-full px-4 py-3 rounded-lg text-white placeholder-purple-300/30 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
+            />
+            <p className="text-xs text-purple-300/40">用逗号分隔多个自定义标签</p>
           </div>
 
           <div className="space-y-2">

@@ -6,6 +6,7 @@ export interface DreamLocation {
   relatedPeople: string;
   memoryFragment: string;
   emotionColor: string;
+  tags: string[];
   positionX: number;
   positionY: number;
   createdAt: string;

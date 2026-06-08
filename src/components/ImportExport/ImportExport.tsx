@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2 } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import type { DreamLocation } from '@/types';
-import { hexToRgba } from '@/utils/storage';
+import { hexToRgba, normalizeDreamLocation } from '@/utils/storage';
 
 interface ImportPreview {
   data: DreamLocation[];
@@ -33,21 +33,7 @@ export function ImportExport() {
   const dropZoneRef = useRef<HTMLLabelElement>(null);
 
   const validateDreamLocation = (item: unknown): item is DreamLocation => {
-    if (typeof item !== 'object' || item === null) return false;
-    const loc = item as Record<string, unknown>;
-    return (
-      typeof loc.id === 'string' &&
-      typeof loc.name === 'string' &&
-      typeof loc.atmosphere === 'string' &&
-      typeof loc.frequency === 'string' &&
-      typeof loc.relatedPeople === 'string' &&
-      typeof loc.memoryFragment === 'string' &&
-      typeof loc.emotionColor === 'string' &&
-      typeof loc.positionX === 'number' &&
-      typeof loc.positionY === 'number' &&
-      typeof loc.createdAt === 'string' &&
-      typeof loc.updatedAt === 'string'
-    );
+    return normalizeDreamLocation(item) !== null;
   };
 
   const processFile = useCallback((file: File) => {
@@ -96,12 +82,15 @@ export function ImportExport() {
 
         parsed.forEach((item) => {
           if (validateDreamLocation(item)) {
-            if (importedIds.has(item.id)) {
+            const normalized = normalizeDreamLocation(item);
+            if (!normalized) return;
+
+            if (importedIds.has(normalized.id)) {
               internalDuplicateCount++;
               return;
             }
-            importedIds.add(item.id);
-            validLocations.push(item);
+            importedIds.add(normalized.id);
+            validLocations.push(normalized);
           }
         });
 

@@ -15,7 +15,7 @@ export function DreamMap() {
     [locations, filters]
   );
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || !!filters.tag;
   const hasResults = filteredLocations.length > 0;
 
   useEffect(() => {

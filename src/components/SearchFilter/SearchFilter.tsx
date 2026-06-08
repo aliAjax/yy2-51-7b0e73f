@@ -9,6 +9,7 @@ export function SearchFilter() {
   const filters = useDreamStore((state) => state.filters);
   const setSearchText = useDreamStore((state) => state.setSearchText);
   const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
+  const setTagFilter = useDreamStore((state) => state.setTagFilter);
   const clearFilters = useDreamStore((state) => state.clearFilters);
 
   const filteredLocations = useMemo(
@@ -18,7 +19,12 @@ export function SearchFilter() {
 
   const filteredCount = filteredLocations.length;
   const totalCount = locations.length;
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const tags = useMemo(() => {
+    return Array.from(new Set(locations.flatMap((location) => location.tags))).sort((a, b) =>
+      a.localeCompare(b, 'zh-CN')
+    );
+  }, [locations]);
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || !!filters.tag;
 
   return (
     <div className="border-b border-purple-300/10">
@@ -32,7 +38,7 @@ export function SearchFilter() {
             type="text"
             value={filters.searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder="搜索地点、氛围、人物..."
+            placeholder="搜索地点、氛围、人物、标签..."
             className="w-full pl-9 pr-8 py-2 rounded-lg text-sm text-white placeholder-purple-300/40 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
           />
           {filters.searchText && (
@@ -96,6 +102,38 @@ export function SearchFilter() {
                 ))}
               </div>
             </div>
+
+            {tags.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-xs text-purple-300/60 block">梦境标签</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setTagFilter('')}
+                    className={`py-1.5 px-2 rounded-md text-xs transition-all ${
+                      !filters.tag
+                        ? 'text-white bg-purple-500/30 border border-purple-400/50'
+                        : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                    }`}
+                  >
+                    全部
+                  </button>
+                  {tags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => setTagFilter(tag)}
+                      className={`max-w-full py-1.5 px-2 rounded-md text-xs truncate transition-all ${
+                        filters.tag === tag
+                          ? 'text-white bg-purple-500/30 border border-purple-400/50'
+                          : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                      }`}
+                      title={tag}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {hasActiveFilters && (
               <button

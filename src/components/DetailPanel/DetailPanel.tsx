@@ -1,4 +1,4 @@
-import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock } from 'lucide-react';
+import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tags } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
@@ -110,6 +110,32 @@ export function DetailPanel() {
             <p className="text-sm text-purple-100/90 leading-relaxed">
               {location.atmosphere || '暂无描述'}
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-purple-300/60 text-xs uppercase tracking-wider">
+              <Tags size={12} />
+              <span>梦境标签</span>
+            </div>
+            {location.tags.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {location.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="max-w-full truncate rounded-full px-2.5 py-1 text-xs text-purple-100/85"
+                    style={{
+                      backgroundColor: hexToRgba(location.emotionColor, 0.16),
+                      border: `1px solid ${hexToRgba(location.emotionColor, 0.32)}`,
+                    }}
+                    title={tag}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-purple-100/60">暂无标签</p>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DreamLocation, DreamRelation, RelationType } from '@/types';
-import { loadDreamLocations, saveDreamLocations, loadDreamRelations, saveDreamRelations, generateId } from '@/utils/storage';
+import { saveDreamLocations, saveDreamRelations, generateId } from '@/utils/storage';
+import { runMigrations, saveDreamDataWithVersion, validateImportedData } from '@/utils/storageMigration';
 
 export function filterLocations(
   locations: DreamLocation[],
@@ -123,8 +124,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       updatedAt: now,
     };
     const newLocations = [...get().locations, newLocation];
+    const currentRelations = get().relations;
     set({ locations: newLocations });
     saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   updateLocation: (id, data) => {
@@ -133,8 +136,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         ? { ...loc, ...data, updatedAt: new Date().toISOString() }
         : loc
     );
+    const currentRelations = get().relations;
     set({ locations: newLocations });
     saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   deleteLocation: (id) => {
@@ -149,6 +154,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     });
     saveDreamLocations(newLocations);
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(newLocations, newRelations);
   },
 
   updatePosition: (id, x, y) => {
@@ -157,8 +163,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         ? { ...loc, positionX: x, positionY: y, updatedAt: new Date().toISOString() }
         : loc
     );
+    const currentRelations = get().relations;
     set({ locations: newLocations });
     saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   selectLocation: (id) => {
@@ -191,8 +199,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       updatedAt: now,
     };
     const newRelations = [...get().relations, newRelation];
+    const currentLocations = get().locations;
     set({ relations: newRelations });
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   updateRelation: (id, data) => {
@@ -201,17 +211,21 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         ? { ...rel, ...data, updatedAt: new Date().toISOString() }
         : rel
     );
+    const currentLocations = get().locations;
     set({ relations: newRelations });
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   deleteRelation: (id) => {
     const newRelations = get().relations.filter((rel) => rel.id !== id);
+    const currentLocations = get().locations;
     set({
       relations: newRelations,
       selectedRelationId: get().selectedRelationId === id ? null : get().selectedRelationId,
     });
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   getRelationsForLocation: (locationId) => {
@@ -326,20 +340,24 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
   importLocations: (imported, mode) => {
     const currentLocations = get().locations;
+    const currentRelations = get().relations;
     let added = 0;
     let updated = 0;
+    const validation = validateImportedData(imported);
+    const validImported = validation.validLocations;
+    const skipped = validation.invalidLocationCount;
 
     if (mode === 'replace') {
-      set({ locations: imported, selectedLocationId: null });
-      saveDreamLocations(imported);
-      added = imported.length;
-      return { added, updated: 0, skipped: 0 };
+      set({ locations: validImported, selectedLocationId: null });
+      saveDreamLocations(validImported);
+      saveDreamDataWithVersion(validImported, currentRelations);
+      return { added: validImported.length, updated: 0, skipped };
     }
 
     const existingMap = new Map(currentLocations.map((loc) => [loc.id, loc]));
     const result: DreamLocation[] = [...currentLocations];
 
-    imported.forEach((item) => {
+    validImported.forEach((item) => {
       if (existingMap.has(item.id)) {
         const index = result.findIndex((loc) => loc.id === item.id);
         if (index !== -1) {
@@ -354,7 +372,8 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
     set({ locations: result });
     saveDreamLocations(result);
-    return { added, updated, skipped: 0 };
+    saveDreamDataWithVersion(result, currentRelations);
+    return { added, updated, skipped };
   },
 
   exportLocations: () => {
@@ -362,21 +381,25 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   },
 
   importRelations: (imported, mode) => {
+    const currentLocations = get().locations;
     const currentRelations = get().relations;
     let added = 0;
     let updated = 0;
+    const validation = validateImportedData(currentLocations, imported);
+    const validImported = validation.validRelations;
+    const skipped = validation.invalidRelationCount;
 
     if (mode === 'replace') {
-      set({ relations: imported, selectedRelationId: null });
-      saveDreamRelations(imported);
-      added = imported.length;
-      return { added, updated: 0, skipped: 0 };
+      set({ relations: validImported, selectedRelationId: null });
+      saveDreamRelations(validImported);
+      saveDreamDataWithVersion(currentLocations, validImported);
+      return { added: validImported.length, updated: 0, skipped };
     }
 
     const existingMap = new Map(currentRelations.map((rel) => [rel.id, rel]));
     const result: DreamRelation[] = [...currentRelations];
 
-    imported.forEach((item) => {
+    validImported.forEach((item) => {
       if (existingMap.has(item.id)) {
         const index = result.findIndex((rel) => rel.id === item.id);
         if (index !== -1) {
@@ -391,7 +414,8 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
     set({ relations: result });
     saveDreamRelations(result);
-    return { added, updated, skipped: 0 };
+    saveDreamDataWithVersion(currentLocations, result);
+    return { added, updated, skipped };
   },
 
   exportRelations: () => {
@@ -400,7 +424,21 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 }));
 
 export function initializeDreamStore(): void {
-  const locations = loadDreamLocations();
-  const relations = loadDreamRelations();
+  const migrationResult = runMigrations();
+  const { locations, relations } = migrationResult;
+
+  if (migrationResult.migrated || migrationResult.filteredCount > 0) {
+    console.info(
+      `[Storage Migration] Loaded schema v${migrationResult.toVersion}; ` +
+      `migrated: ${migrationResult.migrated}; ` +
+      `filtered: ${migrationResult.filteredCount}; ` +
+      `backup created: ${migrationResult.backupCreated}`
+    );
+  }
+
+  if (!migrationResult.success) {
+    console.error('[Storage Migration] Failed and used backup fallback:', migrationResult.error);
+  }
+
   useDreamStore.setState({ locations, relations });
 }

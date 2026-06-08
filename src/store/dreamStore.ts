@@ -66,7 +66,7 @@ interface DreamActions {
   openForm: (location?: DreamLocation) => void;
   closeForm: () => void;
   addRelation: (data: { fromId: string; toId: string; type: RelationType; description: string }) => void;
-  updateRelation: (id: string, data: Partial<Pick<DreamRelation, 'type' | 'description'>>) => void;
+  updateRelation: (id: string, data: Partial<Pick<DreamRelation, 'fromId' | 'toId' | 'type' | 'description'>>) => void;
   deleteRelation: (id: string) => void;
   getRelationsForLocation: (locationId: string) => DreamRelation[];
   openRelationForm: (relation?: DreamRelation, defaultFromId?: string) => void;

@@ -30,25 +30,8 @@ export function RelationLines({ locations }: RelationLinesProps) {
     );
   }, [relations, locationMap]);
 
-  const getRelatedLocationIds = (locationId: string | null): Set<string> => {
-    if (!locationId) return new Set();
-    const related = new Set<string>();
-    visibleRelations.forEach((rel) => {
-      if (rel.fromId === locationId) {
-        related.add(rel.toId);
-      } else if (rel.toId === locationId) {
-        related.add(rel.fromId);
-      }
-    });
-    return related;
-  };
-
-  const relatedLocationIds = useMemo(
-    () => getRelatedLocationIds(selectedLocationId),
-    [selectedLocationId, visibleRelations]
-  );
-
-  const getRelatedRelationIds = (locationId: string | null): Set<string> => {
+  const relatedRelationIds = useMemo(() => {
+    const locationId = selectedLocationId;
     if (!locationId) return new Set();
     const related = new Set<string>();
     visibleRelations.forEach((rel) => {
@@ -57,12 +40,7 @@ export function RelationLines({ locations }: RelationLinesProps) {
       }
     });
     return related;
-  };
-
-  const relatedRelationIds = useMemo(
-    () => getRelatedRelationIds(selectedLocationId),
-    [selectedLocationId, visibleRelations]
-  );
+  }, [selectedLocationId, visibleRelations]);
 
   const generateCurvePath = (
     x1: number,
@@ -128,7 +106,6 @@ export function RelationLines({ locations }: RelationLinesProps) {
     >
       <defs>
         {visibleRelations.map((rel) => {
-          const color = RELATION_TYPE_COLORS[rel.type];
           return (
             <filter key={`glow-${rel.id}`} id={`glow-${rel.id}`} x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="3" result="coloredBlur" />

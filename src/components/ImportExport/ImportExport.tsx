@@ -92,7 +92,7 @@ export function ImportExport() {
     );
   };
 
-  const parseImportData = (parsed: unknown): { locations: DreamLocation[]; relations: DreamRelation[] } | null => {
+  const parseImportData = useCallback((parsed: unknown): { locations: DreamLocation[]; relations: DreamRelation[] } | null => {
     if (Array.isArray(parsed)) {
       const locations = parsed.filter(validateDreamLocation).map((loc) => ({
         ...loc,
@@ -122,7 +122,7 @@ export function ImportExport() {
     }
 
     return null;
-  };
+  }, []);
 
   const processFile = useCallback((file: File) => {
     setError(null);
@@ -155,6 +155,7 @@ export function ImportExport() {
 
         const { locations: importLocations, relations: importRelations } = data;
 
+        const currentLocationIds = new Set(locations.map((loc) => loc.id));
         const locationIds = new Set<string>();
         let internalDuplicateLocationCount = 0;
         const validLocations: DreamLocation[] = [];
@@ -179,8 +180,8 @@ export function ImportExport() {
             return;
           }
 
-          const fromExists = locationIds.has(rel.fromId);
-          const toExists = locationIds.has(rel.toId);
+          const fromExists = locationIds.has(rel.fromId) || currentLocationIds.has(rel.fromId);
+          const toExists = locationIds.has(rel.toId) || currentLocationIds.has(rel.toId);
 
           if (!fromExists || !toExists) {
             orphanRelations.push(rel);
@@ -259,7 +260,7 @@ export function ImportExport() {
     };
 
     reader.readAsText(file);
-  }, [locations, relations]);
+  }, [locations, relations, parseImportData]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -299,17 +300,18 @@ export function ImportExport() {
     processFile(file);
   };
 
-  const buildExportData = (): ExportData => {
+  const buildExportData = (type: ExportDataType = exportType): ExportData => {
     return {
       version: '1.0',
       exportedAt: new Date().toISOString(),
-      locations: exportType === 'relations' ? [] : exportLocations(),
-      relations: exportType === 'locations' ? [] : exportRelations(),
+      locations: type === 'relations' ? [] : exportLocations(),
+      relations: type === 'locations' ? [] : exportRelations(),
     };
   };
 
-  const handleExport = () => {
-    const data = buildExportData();
+  const handleExport = (type: ExportDataType = exportType) => {
+    setExportType(type);
+    const data = buildExportData(type);
     const hasLocations = data.locations.length > 0;
     const hasRelations = data.relations.length > 0;
 
@@ -488,30 +490,21 @@ export function ImportExport() {
                 }}
               >
                 <button
-                  onClick={() => {
-                    setExportType('all');
-                    handleExport();
-                  }}
+                  onClick={() => handleExport('all')}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
                 >
                   <FileJson size={16} className="text-purple-300" />
                   全部数据
                 </button>
                 <button
-                  onClick={() => {
-                    setExportType('locations');
-                    handleExport();
-                  }}
+                  onClick={() => handleExport('locations')}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
                 >
                   <MapPin size={16} className="text-purple-300" />
                   仅地点
                 </button>
                 <button
-                  onClick={() => {
-                    setExportType('relations');
-                    handleExport();
-                  }}
+                  onClick={() => handleExport('relations')}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
                 >
                   <Link size={16} className="text-purple-300" />

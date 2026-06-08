@@ -28,18 +28,21 @@ export function RelationForm() {
     if (!fromId) return new Set<string>();
     return new Set(
       relations
+        .filter((rel) => rel.id !== editingRelation?.id)
         .filter((rel) => rel.fromId === fromId || rel.toId === fromId)
         .map((rel) => (rel.fromId === fromId ? rel.toId : rel.fromId))
     );
-  }, [relations, fromId]);
+  }, [relations, fromId, editingRelation?.id]);
 
   const availableToLocations = useMemo(() => {
     if (!fromId) return locations;
-    if (isEditing) {
-      return locations.filter((loc) => loc.id !== fromId);
-    }
     return locations.filter((loc) => loc.id !== fromId && !existingRelationIds.has(loc.id));
-  }, [locations, fromId, existingRelationIds, isEditing]);
+  }, [locations, fromId, existingRelationIds]);
+
+  useEffect(() => {
+    if (!toId || availableToLocations.some((loc) => loc.id === toId)) return;
+    setToId('');
+  }, [availableToLocations, toId]);
 
   useEffect(() => {
     if (isRelationFormOpen) {
@@ -73,7 +76,7 @@ export function RelationForm() {
     }
 
     if (editingRelation) {
-      updateRelation(editingRelation.id, { type, description });
+      updateRelation(editingRelation.id, { fromId, toId, type, description });
     } else {
       addRelation({ fromId, toId, type, description });
       setShowSuccess(true);
@@ -145,8 +148,7 @@ export function RelationForm() {
                     <select
                       value={fromId}
                       onChange={(e) => setFromId(e.target.value)}
-                      disabled={isEditing}
-                      className="w-full px-3 py-2.5 rounded-lg text-sm text-white bg-white/5 border border-purple-300/20 focus:outline-none focus:border-purple-400/50 transition-colors disabled:opacity-50 appearance-none cursor-pointer"
+                      className="w-full px-3 py-2.5 rounded-lg text-sm text-white bg-white/5 border border-purple-300/20 focus:outline-none focus:border-purple-400/50 transition-colors appearance-none cursor-pointer"
                     >
                       {locations.map((loc) => (
                         <option key={loc.id} value={loc.id}>
@@ -161,7 +163,7 @@ export function RelationForm() {
                   <button
                     type="button"
                     onClick={handleSwap}
-                    disabled={isEditing || !fromId || !toId}
+                    disabled={!fromId || !toId}
                     className="p-1.5 rounded-full bg-white/5 border border-purple-300/20 text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     title="交换起点终点"
                   >
@@ -174,8 +176,7 @@ export function RelationForm() {
                     <select
                       value={toId}
                       onChange={(e) => setToId(e.target.value)}
-                      disabled={isEditing}
-                      className="w-full px-3 py-2.5 rounded-lg text-sm text-white bg-white/5 border border-purple-300/20 focus:outline-none focus:border-purple-400/50 transition-colors disabled:opacity-50 appearance-none cursor-pointer"
+                      className="w-full px-3 py-2.5 rounded-lg text-sm text-white bg-white/5 border border-purple-300/20 focus:outline-none focus:border-purple-400/50 transition-colors appearance-none cursor-pointer"
                     >
                       <option value="">选择地点...</option>
                       {availableToLocations.map((loc) => (
@@ -216,7 +217,7 @@ export function RelationForm() {
                 </div>
               )}
 
-              {!isEditing && fromId && availableToLocations.length === 0 && (
+              {fromId && availableToLocations.length === 0 && (
                 <p className="text-xs text-orange-400/70 mt-2">
                   该地点已与其他所有地点建立了关系
                 </p>

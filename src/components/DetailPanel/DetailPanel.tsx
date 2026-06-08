@@ -1,5 +1,6 @@
 import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
+import { FREQUENCY_OPTIONS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 export function DetailPanel() {
@@ -84,13 +85,13 @@ export function DetailPanel() {
               <span>出现频率</span>
             </div>
             <div className="flex gap-2">
-              {['偶尔', '经常', '频繁', '每次都会'].map((freq, index) => (
+              {FREQUENCY_OPTIONS.map((freq, index) => (
                 <div
                   key={freq}
                   className="flex-1 h-2 rounded-full"
                   style={{
                     backgroundColor:
-                      index <= ['偶尔', '经常', '频繁', '每次都会'].indexOf(location.frequency as any)
+                      index <= FREQUENCY_OPTIONS.indexOf(location.frequency as (typeof FREQUENCY_OPTIONS)[number])
                         ? location.emotionColor
                         : 'rgba(255, 255, 255, 0.1)',
                     transition: 'background-color 0.3s',

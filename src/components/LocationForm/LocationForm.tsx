@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS } from '@/types';
-import type { DreamLocation } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 const PRESET_COLORS = [

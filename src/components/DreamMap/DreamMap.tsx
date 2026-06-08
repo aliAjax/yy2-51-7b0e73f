@@ -6,7 +6,6 @@ export function DreamMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const locations = useDreamStore((state) => state.locations);
   const selectLocation = useDreamStore((state) => state.selectLocation);
-  const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
 
   useEffect(() => {
     const canvas = document.createElement('canvas');

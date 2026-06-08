@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { BarChart3, Moon, Plus } from 'lucide-react';
+import { BarChart3, Clock3, Moon, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useDreamStore } from '@/store/dreamStore';
 import { ImportExport } from '@/components/ImportExport/ImportExport';
 import { DreamStatsPanel } from '@/components/DreamStatsPanel/DreamStatsPanel';
 
 export function Header() {
+  const navigate = useNavigate();
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const locations = useDreamStore((state) => state.locations);
   const openForm = useDreamStore((state) => state.openForm);
@@ -50,6 +52,7 @@ export function Header() {
               type="button"
               onClick={() => setIsStatsOpen(true)}
               aria-label="打开梦境统计"
+              title="打开梦境统计"
               className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-purple-100 transition-all hover:scale-105 active:scale-95"
               style={{
                 background: 'rgba(255, 255, 255, 0.08)',
@@ -63,6 +66,21 @@ export function Header() {
                   {locations.length > 99 ? '99+' : locations.length}
                 </span>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/timeline')}
+              aria-label="打开梦境时间轴"
+              title="打开梦境时间轴"
+              className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-purple-100 transition-all hover:scale-105 active:scale-95"
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(155, 89, 182, 0.28)',
+                boxShadow: '0 4px 15px rgba(20, 12, 40, 0.25)',
+              }}
+            >
+              <Clock3 size={18} className="transition-transform group-hover:-translate-y-0.5" />
             </button>
 
             <ImportExport />

@@ -1,11 +1,22 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
+import { SearchX } from 'lucide-react';
 import { DreamNode } from './DreamNode';
-import { useDreamStore } from '@/store/dreamStore';
+import { useDreamStore, filterLocations } from '@/store/dreamStore';
 
 export function DreamMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const locations = useDreamStore((state) => state.locations);
+  const filters = useDreamStore((state) => state.filters);
+  const clearFilters = useDreamStore((state) => state.clearFilters);
   const selectLocation = useDreamStore((state) => state.selectLocation);
+
+  const filteredLocations = useMemo(
+    () => filterLocations(locations, filters),
+    [locations, filters]
+  );
+
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasResults = filteredLocations.length > 0;
 
   useEffect(() => {
     const canvas = document.createElement('canvas');
@@ -131,7 +142,25 @@ export function DreamMap() {
         </div>
       )}
 
-      {locations.map((location) => (
+      {locations.length > 0 && !hasResults && hasActiveFilters && (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center text-purple-200/50 animate-fade-in">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-purple-500/10 border border-purple-400/20">
+              <SearchX size={28} className="text-purple-300/60" />
+            </div>
+            <p className="text-lg md:text-xl font-serif italic mb-2">未找到匹配的梦境</p>
+            <p className="text-sm opacity-70 mb-4">没有符合当前筛选条件的地点</p>
+            <button
+              onClick={clearFilters}
+              className="px-5 py-2 rounded-lg text-sm text-purple-200/80 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10 transition-all"
+            >
+              清空筛选条件
+            </button>
+          </div>
+        </div>
+      )}
+
+      {filteredLocations.map((location) => (
         <DreamNode key={location.id} location={location} />
       ))}
     </div>

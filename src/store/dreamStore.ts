@@ -2,12 +2,45 @@ import { create } from 'zustand';
 import type { DreamLocation } from '@/types';
 import { loadDreamLocations, saveDreamLocations, generateId } from '@/utils/storage';
 
+export function filterLocations(
+  locations: DreamLocation[],
+  filters: { searchText: string; frequency: string }
+): DreamLocation[] {
+  const { searchText, frequency } = filters;
+
+  return locations.filter((location) => {
+    if (searchText) {
+      const lowerSearch = searchText.toLowerCase().trim();
+      if (!lowerSearch) return true;
+
+      const matchName = location.name.toLowerCase().includes(lowerSearch);
+      const matchAtmosphere = location.atmosphere.toLowerCase().includes(lowerSearch);
+      const matchPeople = location.relatedPeople.toLowerCase().includes(lowerSearch);
+      if (!matchName && !matchAtmosphere && !matchPeople) {
+        return false;
+      }
+    }
+
+    if (frequency && location.frequency !== frequency) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+interface FilterState {
+  searchText: string;
+  frequency: string;
+}
+
 interface DreamState {
   locations: DreamLocation[];
   selectedLocationId: string | null;
   isFormOpen: boolean;
   editingLocation: DreamLocation | null;
   isSidebarOpen: boolean;
+  filters: FilterState;
 }
 
 interface DreamActions {
@@ -20,6 +53,10 @@ interface DreamActions {
   closeForm: () => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  setSearchText: (text: string) => void;
+  setFrequencyFilter: (frequency: string) => void;
+  clearFilters: () => void;
+  getFilteredLocations: () => DreamLocation[];
 }
 
 export type DreamStore = DreamState & DreamActions;
@@ -30,6 +67,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   isFormOpen: false,
   editingLocation: null,
   isSidebarOpen: true,
+  filters: {
+    searchText: '',
+    frequency: '',
+  },
 
   addLocation: (data) => {
     const now = new Date().toISOString();
@@ -104,6 +145,49 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
   setSidebarOpen: (open) => {
     set({ isSidebarOpen: open });
+  },
+
+  setSearchText: (text) => {
+    set((state) => {
+      const newFilters = { ...state.filters, searchText: text };
+      const filtered = filterLocations(state.locations, newFilters);
+      const selectedStillExists = state.selectedLocationId
+        ? filtered.some((loc) => loc.id === state.selectedLocationId)
+        : true;
+
+      return {
+        filters: newFilters,
+        selectedLocationId: selectedStillExists ? state.selectedLocationId : null,
+      };
+    });
+  },
+
+  setFrequencyFilter: (frequency) => {
+    set((state) => {
+      const newFilters = { ...state.filters, frequency };
+      const filtered = filterLocations(state.locations, newFilters);
+      const selectedStillExists = state.selectedLocationId
+        ? filtered.some((loc) => loc.id === state.selectedLocationId)
+        : true;
+
+      return {
+        filters: newFilters,
+        selectedLocationId: selectedStillExists ? state.selectedLocationId : null,
+      };
+    });
+  },
+
+  clearFilters: () => {
+    set({
+      filters: {
+        searchText: '',
+        frequency: '',
+      },
+    });
+  },
+
+  getFilteredLocations: () => {
+    return filterLocations(get().locations, get().filters);
   },
 }));
 

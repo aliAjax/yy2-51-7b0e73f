@@ -1,14 +1,26 @@
-import { BookOpen, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useDreamStore } from '@/store/dreamStore';
+import { useMemo } from 'react';
+import { BookOpen, Plus, ChevronLeft, ChevronRight, SearchX } from 'lucide-react';
+import { useDreamStore, filterLocations } from '@/store/dreamStore';
 import { hexToRgba } from '@/utils/storage';
+import { SearchFilter } from '@/components/SearchFilter/SearchFilter';
 
 export function Sidebar() {
   const locations = useDreamStore((state) => state.locations);
+  const filters = useDreamStore((state) => state.filters);
+  const clearFilters = useDreamStore((state) => state.clearFilters);
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const openForm = useDreamStore((state) => state.openForm);
   const isSidebarOpen = useDreamStore((state) => state.isSidebarOpen);
   const toggleSidebar = useDreamStore((state) => state.toggleSidebar);
+
+  const filteredLocations = useMemo(
+    () => filterLocations(locations, filters),
+    [locations, filters]
+  );
+
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasResults = filteredLocations.length > 0;
 
   return (
     <>
@@ -28,6 +40,8 @@ export function Sidebar() {
             boxShadow: '5px 0 30px rgba(0, 0, 0, 0.3)',
           }}
         >
+          <SearchFilter />
+
           <div className="p-5 border-b border-purple-300/10">
             <div className="flex items-center gap-3">
               <div
@@ -42,7 +56,9 @@ export function Sidebar() {
               <div>
                 <h2 className="text-sm font-serif text-white font-medium">梦境档案</h2>
                 <p className="text-xs text-purple-300/50">
-                  {locations.length} 个地点
+                  {hasActiveFilters
+                    ? `${filteredLocations.length} / ${locations.length} 个地点`
+                    : `${locations.length} 个地点`}
                 </p>
               </div>
             </div>
@@ -68,8 +84,24 @@ export function Sidebar() {
                 <p className="text-xs text-purple-300/40 italic">档案为空</p>
                 <p className="text-xs text-purple-300/30 mt-1">点击上方按钮记录</p>
               </div>
+            ) : !hasResults ? (
+              <div className="py-8 text-center">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center bg-purple-500/10">
+                  <SearchX size={20} className="text-purple-300/50" />
+                </div>
+                <p className="text-xs text-purple-300/50 italic">未找到匹配的地点</p>
+                <p className="text-xs text-purple-300/30 mt-1">
+                  试试调整搜索条件
+                </p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 px-4 py-1.5 rounded-md text-xs text-purple-300/70 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10 transition-all"
+                >
+                  清空筛选
+                </button>
+              </div>
             ) : (
-              locations.map((location) => (
+              filteredLocations.map((location) => (
                 <button
                   key={location.id}
                   onClick={() => selectLocation(location.id)}

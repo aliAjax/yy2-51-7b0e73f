@@ -1,40 +1,65 @@
 import { useState, useRef, useCallback } from 'react';
-import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2 } from 'lucide-react';
+import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2, Link, MapPin } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
-import type { DreamLocation } from '@/types';
+import type { DreamLocation, DreamRelation } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 interface ImportPreview {
-  data: DreamLocation[];
-  duplicateIds: string[];
-  newIds: string[];
-  totalCount: number;
-  invalidCount: number;
-  internalDuplicateCount: number;
-  skippedCount: number;
+  locations: DreamLocation[];
+  relations: DreamRelation[];
+  duplicateLocationIds: string[];
+  newLocationIds: string[];
+  duplicateRelationIds: string[];
+  newRelationIds: string[];
+  totalLocationCount: number;
+  totalRelationCount: number;
+  invalidLocationCount: number;
+  invalidRelationCount: number;
+  internalDuplicateLocationCount: number;
+  internalDuplicateRelationCount: number;
+  skippedLocationCount: number;
+  skippedRelationCount: number;
+  orphanRelations: DreamRelation[];
 }
 
 type ImportMode = 'merge' | 'replace';
 type ConfirmDialogType = 'replace' | 'export-empty' | null;
+type ExportDataType = 'all' | 'locations' | 'relations';
+
+interface ExportData {
+  version: string;
+  exportedAt: string;
+  locations: DreamLocation[];
+  relations: DreamRelation[];
+}
 
 export function ImportExport() {
   const exportLocations = useDreamStore((state) => state.exportLocations);
   const importLocations = useDreamStore((state) => state.importLocations);
+  const exportRelations = useDreamStore((state) => state.exportRelations);
+  const importRelations = useDreamStore((state) => state.importRelations);
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
 
   const [showDialog, setShowDialog] = useState(false);
+  const [exportType, setExportType] = useState<ExportDataType>('all');
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<ImportMode>('merge');
-  const [importResult, setImportResult] = useState<{ added: number; updated: number; skipped: number } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    locations: { added: number; updated: number; skipped: number };
+    relations: { added: number; updated: number; skipped: number };
+  } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogType>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLLabelElement>(null);
 
-  const validateDreamLocation = (item: unknown): item is DreamLocation => {
+  const validateDreamLocation = (item: unknown): item is DreamLocation & { tags?: string[] } => {
     if (typeof item !== 'object' || item === null) return false;
     const loc = item as Record<string, unknown>;
+    const hasTags = loc.tags === undefined || (Array.isArray(loc.tags) && loc.tags.every((t: unknown) => typeof t === 'string'));
     return (
       typeof loc.id === 'string' &&
       typeof loc.name === 'string' &&
@@ -46,8 +71,57 @@ export function ImportExport() {
       typeof loc.positionX === 'number' &&
       typeof loc.positionY === 'number' &&
       typeof loc.createdAt === 'string' &&
-      typeof loc.updatedAt === 'string'
+      typeof loc.updatedAt === 'string' &&
+      hasTags
     );
+  };
+
+  const validateDreamRelation = (item: unknown): item is DreamRelation => {
+    if (typeof item !== 'object' || item === null) return false;
+    const rel = item as Record<string, unknown>;
+    const validTypes = ['相似', '延续', '反复出现', '人物相关'];
+    return (
+      typeof rel.id === 'string' &&
+      typeof rel.fromId === 'string' &&
+      typeof rel.toId === 'string' &&
+      typeof rel.type === 'string' &&
+      validTypes.includes(rel.type) &&
+      typeof rel.description === 'string' &&
+      typeof rel.createdAt === 'string' &&
+      typeof rel.updatedAt === 'string'
+    );
+  };
+
+  const parseImportData = (parsed: unknown): { locations: DreamLocation[]; relations: DreamRelation[] } | null => {
+    if (Array.isArray(parsed)) {
+      const locations = parsed.filter(validateDreamLocation).map((loc) => ({
+        ...loc,
+        tags: loc.tags || [],
+      }));
+      if (locations.length > 0) {
+        return { locations, relations: [] };
+      }
+      return null;
+    }
+
+    if (typeof parsed === 'object' && parsed !== null) {
+      const obj = parsed as Record<string, unknown>;
+      const locations = Array.isArray(obj.locations)
+        ? obj.locations.filter(validateDreamLocation).map((loc) => ({
+            ...loc,
+            tags: loc.tags || [],
+          }))
+        : [];
+      const relations = Array.isArray(obj.relations)
+        ? obj.relations.filter(validateDreamRelation)
+        : [];
+
+      if (locations.length > 0 || relations.length > 0) {
+        return { locations, relations };
+      }
+    }
+
+    return null;
   };
 
   const processFile = useCallback((file: File) => {
@@ -73,58 +147,107 @@ export function ImportExport() {
           return;
         }
 
-        if (!Array.isArray(parsed)) {
-          setError('数据格式错误：期望一个梦境地点数组');
+        const data = parseImportData(parsed);
+        if (!data || (data.locations.length === 0 && data.relations.length === 0)) {
+          setError('文件中没有找到有效的梦境数据');
           return;
         }
 
-        if (parsed.length === 0) {
-          setError('文件中没有梦境地点数据');
-          return;
-        }
+        const { locations: importLocations, relations: importRelations } = data;
 
+        const locationIds = new Set<string>();
+        let internalDuplicateLocationCount = 0;
         const validLocations: DreamLocation[] = [];
-        const invalidCount = parsed.filter((item) => !validateDreamLocation(item)).length;
 
-        if (invalidCount > 0 && invalidCount === parsed.length) {
-          setError('文件中的数据格式不正确，没有找到有效的梦境地点');
-          return;
-        }
-
-        const importedIds = new Set<string>();
-        let internalDuplicateCount = 0;
-
-        parsed.forEach((item) => {
-          if (validateDreamLocation(item)) {
-            if (importedIds.has(item.id)) {
-              internalDuplicateCount++;
-              return;
-            }
-            importedIds.add(item.id);
-            validLocations.push(item);
+        importLocations.forEach((loc) => {
+          if (locationIds.has(loc.id)) {
+            internalDuplicateLocationCount++;
+            return;
           }
+          locationIds.add(loc.id);
+          validLocations.push(loc);
         });
 
-        const existingIds = new Set(locations.map((loc) => loc.id));
-        const duplicateIds: string[] = [];
-        const newIds: string[] = [];
+        const relationIds = new Set<string>();
+        let internalDuplicateRelationCount = 0;
+        const validRelations: DreamRelation[] = [];
+        const orphanRelations: DreamRelation[] = [];
+
+        importRelations.forEach((rel) => {
+          if (relationIds.has(rel.id)) {
+            internalDuplicateRelationCount++;
+            return;
+          }
+
+          const fromExists = locationIds.has(rel.fromId);
+          const toExists = locationIds.has(rel.toId);
+
+          if (!fromExists || !toExists) {
+            orphanRelations.push(rel);
+            return;
+          }
+
+          relationIds.add(rel.id);
+          validRelations.push(rel);
+        });
+
+        const existingLocationIds = new Set(locations.map((loc) => loc.id));
+        const duplicateLocationIds: string[] = [];
+        const newLocationIds: string[] = [];
 
         validLocations.forEach((loc) => {
-          if (existingIds.has(loc.id)) {
-            duplicateIds.push(loc.id);
+          if (existingLocationIds.has(loc.id)) {
+            duplicateLocationIds.push(loc.id);
           } else {
-            newIds.push(loc.id);
+            newLocationIds.push(loc.id);
           }
         });
 
+        const existingRelationIds = new Set(relations.map((rel) => rel.id));
+        const duplicateRelationIds: string[] = [];
+        const newRelationIds: string[] = [];
+
+        validRelations.forEach((rel) => {
+          if (existingRelationIds.has(rel.id)) {
+            duplicateRelationIds.push(rel.id);
+          } else {
+            newRelationIds.push(rel.id);
+          }
+        });
+
+        const parsedObj = !Array.isArray(parsed) && typeof parsed === 'object' && parsed !== null
+          ? (parsed as Record<string, unknown>)
+          : null;
+
+        const locationsArray = parsedObj && Array.isArray(parsedObj.locations)
+          ? parsedObj.locations as unknown[]
+          : [];
+        const relationsArray = parsedObj && Array.isArray(parsedObj.relations)
+          ? parsedObj.relations as unknown[]
+          : [];
+
+        const invalidLocationCount = Array.isArray(parsed)
+          ? parsed.filter((item) => !validateDreamLocation(item)).length
+          : locationsArray.filter((item) => !validateDreamLocation(item)).length;
+
+        const invalidRelationCount = relationsArray.filter((item) => !validateDreamRelation(item)).length;
+
         setPreview({
-          data: validLocations,
-          duplicateIds,
-          newIds,
-          totalCount: validLocations.length,
-          invalidCount,
-          internalDuplicateCount,
-          skippedCount: invalidCount + internalDuplicateCount,
+          locations: validLocations,
+          relations: validRelations,
+          duplicateLocationIds,
+          newLocationIds,
+          duplicateRelationIds,
+          newRelationIds,
+          totalLocationCount: validLocations.length,
+          totalRelationCount: validRelations.length,
+          invalidLocationCount,
+          invalidRelationCount,
+          internalDuplicateLocationCount,
+          internalDuplicateRelationCount,
+          skippedLocationCount: invalidLocationCount + internalDuplicateLocationCount,
+          skippedRelationCount: invalidRelationCount + internalDuplicateRelationCount + orphanRelations.length,
+          orphanRelations,
         });
       } catch {
         setError('读取文件时发生未知错误');
@@ -136,7 +259,7 @@ export function ImportExport() {
     };
 
     reader.readAsText(file);
-  }, [locations]);
+  }, [locations, relations]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -176,23 +299,36 @@ export function ImportExport() {
     processFile(file);
   };
 
-  const handleExport = () => {
-    const data = exportLocations();
+  const buildExportData = (): ExportData => {
+    return {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      locations: exportType === 'relations' ? [] : exportLocations(),
+      relations: exportType === 'locations' ? [] : exportRelations(),
+    };
+  };
 
-    if (data.length === 0) {
+  const handleExport = () => {
+    const data = buildExportData();
+    const hasLocations = data.locations.length > 0;
+    const hasRelations = data.relations.length > 0;
+
+    if (!hasLocations && !hasRelations) {
       setConfirmDialog('export-empty');
       return;
     }
 
     doExport(data);
+    setShowExportMenu(false);
   };
 
-  const doExport = (data: DreamLocation[]) => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const doExport = (data: ExportData | DreamLocation[]) => {
+    const jsonData = Array.isArray(data) ? data : data;
+    const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `dream-locations-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `dream-data-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -213,8 +349,13 @@ export function ImportExport() {
   const doImport = () => {
     if (!preview) return;
 
-    const result = importLocations(preview.data, importMode);
-    setImportResult({ ...result, skipped: preview.skippedCount });
+    const locationResult = importLocations(preview.locations, importMode);
+    const relationResult = importRelations(preview.relations, importMode);
+
+    setImportResult({
+      locations: { ...locationResult, skipped: preview.skippedLocationCount },
+      relations: { ...relationResult, skipped: preview.skippedRelationCount },
+    });
     setConfirmDialog(null);
   };
 
@@ -240,7 +381,7 @@ export function ImportExport() {
     if (confirmDialog === 'replace') {
       doImport();
     } else if (confirmDialog === 'export-empty') {
-      doExport([]);
+      doExport(buildExportData());
       setConfirmDialog(null);
     }
   };
@@ -259,12 +400,12 @@ export function ImportExport() {
 
     if (confirmDialog === 'replace') {
       title = '确认替换所有数据？';
-      message = `此操作将删除当前所有 ${locations.length} 个梦境地点，并用导入的 ${preview?.totalCount || 0} 个地点完全替换。此操作不可撤销！`;
+      message = `此操作将删除当前所有 ${locations.length} 个梦境地点和 ${relations.length} 条关系，并用导入的数据完全替换。此操作不可撤销！`;
       confirmText = '确认替换';
       isDanger = true;
     } else if (confirmDialog === 'export-empty') {
       title = '当前没有梦境数据';
-      message = '目前还没有记录任何梦境地点，导出的文件将为空。是否继续导出？';
+      message = '目前还没有记录任何梦境数据，导出的文件将为空。是否继续导出？';
       confirmText = '继续导出';
     }
 
@@ -322,14 +463,64 @@ export function ImportExport() {
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleExport}
-          className="p-2.5 rounded-xl text-purple-200/70 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10 transition-all group"
-          title="导出梦境数据"
-        >
-          <Download size={18} className="transition-transform group-hover:-translate-y-0.5" />
-        </button>
+      <div className="flex items-center gap-2 relative">
+        <div className="relative">
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="p-2.5 rounded-xl text-purple-200/70 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10 transition-all group"
+            title="导出梦境数据"
+          >
+            <Download size={18} className="transition-transform group-hover:-translate-y-0.5" />
+          </button>
+
+          {showExportMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowExportMenu(false)}
+              />
+              <div
+                className="absolute top-full right-0 mt-2 w-44 rounded-xl overflow-hidden z-50 animate-scale-in"
+                style={{
+                  background: `linear-gradient(145deg, ${hexToRgba('#1e1e3f', 0.98)} 0%, ${hexToRgba('#0f0f2a', 0.99)} 100%)`,
+                  border: '1px solid rgba(150, 130, 200, 0.2)',
+                  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setExportType('all');
+                    handleExport();
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
+                >
+                  <FileJson size={16} className="text-purple-300" />
+                  全部数据
+                </button>
+                <button
+                  onClick={() => {
+                    setExportType('locations');
+                    handleExport();
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
+                >
+                  <MapPin size={16} className="text-purple-300" />
+                  仅地点
+                </button>
+                <button
+                  onClick={() => {
+                    setExportType('relations');
+                    handleExport();
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
+                >
+                  <Link size={16} className="text-purple-300" />
+                  仅关系
+                </button>
+              </div>
+            </>
+          )}
+        </div>
 
         <button
           onClick={openDialog}
@@ -384,10 +575,19 @@ export function ImportExport() {
                     <Check size={20} className="text-green-400 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-green-300">导入成功</p>
-                      <div className="text-xs text-green-300/70 mt-1 space-y-1">
-                        <p>新增地点：{importResult.added} 个</p>
-                        {importResult.updated > 0 && <p>更新地点：{importResult.updated} 个</p>}
-                        {importResult.skipped > 0 && <p>跳过地点：{importResult.skipped} 个</p>}
+                      <div className="text-xs text-green-300/70 mt-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <MapPin size={12} />
+                          <span>地点：新增 {importResult.locations.added} 个</span>
+                          {importResult.locations.updated > 0 && <span>，更新 {importResult.locations.updated} 个</span>}
+                          {importResult.locations.skipped > 0 && <span>，跳过 {importResult.locations.skipped} 个</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Link size={12} />
+                          <span>关系：新增 {importResult.relations.added} 条</span>
+                          {importResult.relations.updated > 0 && <span>，更新 {importResult.relations.updated} 条</span>}
+                          {importResult.relations.skipped > 0 && <span>，跳过 {importResult.relations.skipped} 条</span>}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -397,7 +597,7 @@ export function ImportExport() {
               {!preview && !importResult && (
                 <div className="space-y-4">
                   <p className="text-sm text-purple-200/70">
-                    选择一个 JSON 文件来导入梦境地点数据。导入时可以选择合并或替换现有数据。
+                    选择一个 JSON 文件来导入梦境数据。支持导入地点和关系，导入时可以选择合并或替换现有数据。
                   </p>
 
                   <div>
@@ -435,53 +635,57 @@ export function ImportExport() {
 
               {preview && !importResult && (
                 <div className="space-y-5">
-                  <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                    <p className="text-sm font-medium text-purple-200 mb-3">导入预览</p>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="p-3 rounded-lg bg-white/5">
-                        <p className="text-xl font-serif text-white">{preview.totalCount}</p>
-                        <p className="text-xs text-purple-300/60">有效</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <MapPin size={14} className="text-purple-300" />
+                        <p className="text-sm font-medium text-purple-200">地点</p>
                       </div>
-                      <div className="p-3 rounded-lg bg-green-500/10">
-                        <p className="text-xl font-serif text-green-300">{preview.newIds.length}</p>
-                        <p className="text-xs text-green-300/60">新增</p>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className="p-2 rounded-lg bg-white/5">
+                          <p className="text-lg font-serif text-white">{preview.newLocationIds.length}</p>
+                          <p className="text-[10px] text-green-300/70">新增</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white/5">
+                          <p className="text-lg font-serif text-yellow-300">{preview.duplicateLocationIds.length}</p>
+                          <p className="text-[10px] text-yellow-300/70">重复</p>
+                        </div>
                       </div>
-                      <div className="p-3 rounded-lg bg-yellow-500/10">
-                        <p className="text-xl font-serif text-yellow-300">{preview.duplicateIds.length}</p>
-                        <p className="text-xs text-yellow-300/60">重复</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Link size={14} className="text-blue-300" />
+                        <p className="text-sm font-medium text-blue-200">关系</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <div className="p-2 rounded-lg bg-white/5">
+                          <p className="text-lg font-serif text-white">{preview.newRelationIds.length}</p>
+                          <p className="text-[10px] text-green-300/70">新增</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white/5">
+                          <p className="text-lg font-serif text-yellow-300">{preview.duplicateRelationIds.length}</p>
+                          <p className="text-[10px] text-yellow-300/70">重复</p>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {preview.skippedCount > 0 && (
+                  {(preview.skippedLocationCount > 0 || preview.skippedRelationCount > 0) && (
                     <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
                       <div className="flex items-start gap-3">
                         <AlertTriangle size={18} className="text-orange-400 flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="text-sm font-medium text-orange-300">
-                            跳过 {preview.skippedCount} 条数据
+                            跳过部分数据
                           </p>
-                          <p className="text-xs text-orange-300/70 mt-1">
-                            {preview.invalidCount > 0 && `无效数据 ${preview.invalidCount} 条`}
-                            {preview.invalidCount > 0 && preview.internalDuplicateCount > 0 && '，'}
-                            {preview.internalDuplicateCount > 0 && `文件内重复 ID ${preview.internalDuplicateCount} 条`}
-                            ，这些数据将不会写入。
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {preview.duplicateIds.length > 0 && (
-                    <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-                      <div className="flex items-start gap-3">
-                        <AlertTriangle size={18} className="text-yellow-400 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-yellow-300">
-                            发现 {preview.duplicateIds.length} 个重复 ID
-                          </p>
-                          <p className="text-xs text-yellow-300/70 mt-1">
-                            这些地点已存在于当前数据中，请选择导入模式处理重复数据。
+                          <p className="text-xs text-orange-300/70 mt-1 space-y-0.5">
+                            {preview.skippedLocationCount > 0 && (
+                              <span className="block">地点：{preview.skippedLocationCount} 条（无效 {preview.invalidLocationCount} + 文件内重复 {preview.internalDuplicateLocationCount}）</span>
+                            )}
+                            {preview.skippedRelationCount > 0 && (
+                              <span className="block">关系：{preview.skippedRelationCount} 条（无效 {preview.invalidRelationCount} + 文件内重复 {preview.internalDuplicateRelationCount} + 孤立 {preview.orphanRelations.length}）</span>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -509,7 +713,7 @@ export function ImportExport() {
                         <div>
                           <p className="text-sm font-medium text-white">合并模式</p>
                           <p className="text-xs text-purple-300/60 mt-1">
-                            保留现有数据，新增地点添加到列表中，重复 ID 的地点将被更新。
+                            保留现有数据，新增的地点和关系添加到列表中，重复 ID 的数据将被更新。
                           </p>
                         </div>
                       </label>
@@ -535,7 +739,7 @@ export function ImportExport() {
                             <Trash2 size={14} className="text-red-400" />
                           </p>
                           <p className="text-xs text-red-300/60 mt-1">
-                            删除所有现有梦境地点，用导入的数据完全替换。此操作不可撤销！
+                            删除所有现有梦境地点和关系，用导入的数据完全替换。此操作不可撤销！
                           </p>
                         </div>
                       </label>
@@ -545,32 +749,33 @@ export function ImportExport() {
                   <div className="max-h-48 overflow-y-auto rounded-xl bg-white/5 border border-purple-300/10">
                     <div className="p-3 border-b border-purple-300/10">
                       <p className="text-xs font-medium text-purple-200/60">
-                        数据预览（前 {Math.min(preview.data.length, 5)} 条）
+                        地点预览（前 {Math.min(preview.locations.length, 3)} 条）
                       </p>
                     </div>
                     <div className="divide-y divide-purple-300/5">
-                      {preview.data.slice(0, 5).map((loc) => (
-                        <div key={loc.id} className="p-3 flex items-center gap-3">
-                          <div
-                            className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: loc.emotionColor }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-white truncate">{loc.name}</p>
-                            <p className="text-xs text-purple-300/50 truncate">{loc.atmosphere}</p>
+                      {preview.locations.slice(0, 3).map((loc) => (
+                        <div key={loc.id} className="p-3 space-y-1">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: loc.emotionColor }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white truncate">{loc.name}</p>
+                            </div>
+                            {preview.duplicateLocationIds.includes(loc.id) && (
+                              <span className="text-xs text-yellow-400/70 flex-shrink-0 px-2 py-0.5 rounded-full bg-yellow-500/10">
+                                重复
+                              </span>
+                            )}
                           </div>
-                          {preview.duplicateIds.includes(loc.id) && (
-                            <span className="text-xs text-yellow-400/70 flex-shrink-0 px-2 py-0.5 rounded-full bg-yellow-500/10">
-                              重复
-                            </span>
-                          )}
                         </div>
                       ))}
                     </div>
-                    {preview.data.length > 5 && (
-                      <div className="p-3 text-center">
+                    {preview.locations.length > 3 && (
+                      <div className="p-2 text-center">
                         <p className="text-xs text-purple-300/40">
-                          还有 {preview.data.length - 5} 条数据未显示
+                          还有 {preview.locations.length - 3} 个地点未显示
                         </p>
                       </div>
                     )}

@@ -1,6 +1,7 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { SearchX } from 'lucide-react';
 import { DreamNode } from './DreamNode';
+import { RelationLines } from './RelationLines';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 
 export function DreamMap() {
@@ -15,7 +16,7 @@ export function DreamMap() {
     [locations, filters]
   );
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
   const hasResults = filteredLocations.length > 0;
 
   useEffect(() => {
@@ -93,8 +94,11 @@ export function DreamMap() {
     };
   }, []);
 
+  const selectRelation = useDreamStore((state) => state.selectRelation);
+
   const handleMapClick = () => {
     selectLocation(null);
+    selectRelation(null);
   };
 
   return (
@@ -159,6 +163,8 @@ export function DreamMap() {
           </div>
         </div>
       )}
+
+      <RelationLines locations={filteredLocations} />
 
       {filteredLocations.map((location) => (
         <DreamNode key={location.id} location={location} />

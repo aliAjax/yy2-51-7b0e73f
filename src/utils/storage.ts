@@ -1,12 +1,17 @@
-import type { DreamLocation } from '@/types';
+import type { DreamLocation, DreamRelation } from '@/types';
 
 const STORAGE_KEY = 'dream_locations';
+const RELATIONS_STORAGE_KEY = 'dream_relations';
 
 export function loadDreamLocations(): DreamLocation[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      return parsed.map((loc: DreamLocation & { tags?: string[] }) => ({
+        ...loc,
+        tags: loc.tags || [],
+      }));
     }
   } catch (e) {
     console.error('Failed to load dream locations:', e);
@@ -19,6 +24,26 @@ export function saveDreamLocations(locations: DreamLocation[]): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(locations));
   } catch (e) {
     console.error('Failed to save dream locations:', e);
+  }
+}
+
+export function loadDreamRelations(): DreamRelation[] {
+  try {
+    const stored = localStorage.getItem(RELATIONS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load dream relations:', e);
+  }
+  return [];
+}
+
+export function saveDreamRelations(relations: DreamRelation[]): void {
+  try {
+    localStorage.setItem(RELATIONS_STORAGE_KEY, JSON.stringify(relations));
+  } catch (e) {
+    console.error('Failed to save dream relations:', e);
   }
 }
 

@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { Header } from '@/components/Header/Header';
 import { DetailPanel } from '@/components/DetailPanel/DetailPanel';
 import { LocationForm } from '@/components/LocationForm/LocationForm';
+import { RelationForm } from '@/components/RelationForm/RelationForm';
 import { initializeDreamStore } from '@/store/dreamStore';
 
 export default function Home() {
@@ -18,6 +19,7 @@ export default function Home() {
       <Header />
       <DetailPanel />
       <LocationForm />
+      <RelationForm />
     </div>
   );
 }

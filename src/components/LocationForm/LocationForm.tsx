@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Save, Plus, Tag } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
@@ -33,7 +33,11 @@ export function LocationForm() {
     relatedPeople: '',
     memoryFragment: '',
     emotionColor: '#9b59b6',
+    tags: [] as string[],
   });
+
+  const [tagInput, setTagInput] = useState('');
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
   const [errors, setErrors] = useState<{ name?: string }>({});
 
@@ -46,6 +50,7 @@ export function LocationForm() {
         relatedPeople: editingLocation.relatedPeople,
         memoryFragment: editingLocation.memoryFragment,
         emotionColor: editingLocation.emotionColor,
+        tags: editingLocation.tags || [],
       });
     } else {
       setFormData({
@@ -55,8 +60,10 @@ export function LocationForm() {
         relatedPeople: '',
         memoryFragment: '',
         emotionColor: PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
+        tags: [],
       });
     }
+    setTagInput('');
     setErrors({});
   }, [editingLocation, isFormOpen]);
 
@@ -66,6 +73,31 @@ export function LocationForm() {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field as keyof typeof errors]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  const addTag = () => {
+    const trimmedTag = tagInput.trim();
+    if (trimmedTag && !formData.tags.includes(trimmedTag)) {
+      setFormData((prev) => ({ ...prev, tags: [...prev.tags, trimmedTag] }));
+    }
+    setTagInput('');
+    tagInputRef.current?.focus();
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((tag) => tag !== tagToRemove),
+    }));
+  };
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag();
+    } else if (e.key === 'Backspace' && !tagInput && formData.tags.length > 0) {
+      removeTag(formData.tags[formData.tags.length - 1]);
     }
   };
 
@@ -85,6 +117,7 @@ export function LocationForm() {
         relatedPeople: formData.relatedPeople.trim(),
         memoryFragment: formData.memoryFragment.trim(),
         emotionColor: formData.emotionColor,
+        tags: formData.tags,
       });
     } else {
       addLocation({
@@ -94,6 +127,7 @@ export function LocationForm() {
         relatedPeople: formData.relatedPeople.trim(),
         memoryFragment: formData.memoryFragment.trim(),
         emotionColor: formData.emotionColor,
+        tags: formData.tags,
       });
     }
 
@@ -239,6 +273,56 @@ export function LocationForm() {
               placeholder="梦里出现的人..."
               className="w-full px-4 py-3 rounded-lg text-white placeholder-purple-300/30 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-purple-200/70 block flex items-center gap-2">
+              <Tag size={14} />
+              标签
+            </label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {formData.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-white"
+                  style={{
+                    backgroundColor: hexToRgba(formData.emotionColor, 0.25),
+                    border: `1px solid ${hexToRgba(formData.emotionColor, 0.5)}`,
+                  }}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="ml-0.5 hover:text-white/70 transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                ref={tagInputRef}
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                placeholder="输入标签，按回车添加..."
+                className="flex-1 px-3 py-2 rounded-lg text-sm text-white placeholder-purple-300/30 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
+              />
+              <button
+                type="button"
+                onClick={addTag}
+                className="px-3 py-2 rounded-lg text-sm text-white bg-purple-500/30 border border-purple-400/50 hover:bg-purple-500/50 transition-all flex items-center gap-1"
+              >
+                <Plus size={16} />
+                添加
+              </button>
+            </div>
+            <p className="text-xs text-purple-300/40">
+              用标签分类你的梦境地点，方便以后查找
+            </p>
           </div>
 
           <div className="space-y-2">

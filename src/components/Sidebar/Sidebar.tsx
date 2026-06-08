@@ -19,7 +19,7 @@ export function Sidebar() {
     [locations, filters]
   );
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
   const hasResults = filteredLocations.length > 0;
 
   return (
@@ -111,9 +111,9 @@ export function Sidebar() {
                       : 'hover:bg-white/5'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-start gap-3">
                     <div
-                      className="w-3 h-3 rounded-full flex-shrink-0 transition-transform group-hover:scale-125"
+                      className="w-3 h-3 rounded-full flex-shrink-0 mt-1 transition-transform group-hover:scale-125"
                       style={{
                         backgroundColor: location.emotionColor,
                         boxShadow: `0 0 8px ${hexToRgba(location.emotionColor, 0.6)}`,
@@ -132,6 +132,23 @@ export function Sidebar() {
                       <p className="text-xs text-purple-300/40 truncate">
                         {location.frequency}
                       </p>
+                      {location.tags && location.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {location.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="px-1.5 py-0.5 rounded-full text-[10px] text-purple-200/70 bg-white/5 border border-purple-300/15"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {location.tags.length > 3 && (
+                            <span className="px-1.5 py-0.5 text-[10px] text-purple-300/40">
+                              +{location.tags.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </button>

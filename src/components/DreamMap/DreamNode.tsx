@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import type { DreamLocation } from '@/types';
 import { useDreamStore } from '@/store/dreamStore';
 import { hexToRgba, getContrastColor } from '@/utils/storage';
@@ -14,8 +14,30 @@ export function DreamNode({ location }: DreamNodeProps) {
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const updatePosition = useDreamStore((state) => state.updatePosition);
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
+  const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
+  const relations = useDreamStore((state) => state.relations);
 
   const isSelected = selectedLocationId === location.id;
+
+  const isRelated = useMemo(() => {
+    if (!selectedLocationId && !selectedRelationId) return false;
+    if (selectedLocationId === location.id) return false;
+
+    if (selectedLocationId) {
+      return relations.some(
+        (rel) =>
+          (rel.fromId === selectedLocationId && rel.toId === location.id) ||
+          (rel.toId === selectedLocationId && rel.fromId === location.id)
+      );
+    }
+
+    if (selectedRelationId) {
+      const rel = relations.find((r) => r.id === selectedRelationId);
+      return rel && (rel.fromId === location.id || rel.toId === location.id);
+    }
+
+    return false;
+  }, [selectedLocationId, selectedRelationId, relations, location.id]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -100,18 +122,22 @@ export function DreamNode({ location }: DreamNodeProps) {
 
   const textColor = getContrastColor(location.emotionColor);
 
+  const hasSelection = selectedLocationId || selectedRelationId;
+  const isDimmed = hasSelection && !isSelected && !isRelated;
+
   return (
     <div
       ref={nodeRef}
-      className={`absolute cursor-grab select-none transition-transform duration-200 ${
+      className={`absolute cursor-grab select-none transition-all duration-300 ${
         isDragging ? 'cursor-grabbing z-50 scale-110' : 'z-10 hover:scale-105'
-      } ${isSelected ? 'z-20 scale-105' : ''}`}
+      } ${isSelected ? 'z-20 scale-105' : ''} ${isRelated ? 'z-15 scale-102' : ''}`}
       style={{
         left: `${location.positionX}%`,
         top: `${location.positionY}%`,
         transform: 'translate(-50%, -50%)',
-        animation: isSelected ? 'none' : 'float 6s ease-in-out infinite',
+        animation: isSelected || isDragging ? 'none' : 'float 6s ease-in-out infinite',
         animationDelay: `${parseInt(location.id.slice(-2), 36) % 10 * 0.3}s`,
+        opacity: isDimmed ? 0.3 : 1,
       }}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
@@ -120,13 +146,13 @@ export function DreamNode({ location }: DreamNodeProps) {
       <div
         className="relative group"
         style={{
-          filter: `drop-shadow(0 0 20px ${hexToRgba(location.emotionColor, 0.6)}) drop-shadow(0 0 40px ${hexToRgba(location.emotionColor, 0.3)})`,
+          filter: `drop-shadow(0 0 ${isRelated || isSelected ? '25px' : '20px'} ${hexToRgba(location.emotionColor, isRelated || isSelected ? 0.8 : 0.6)}) drop-shadow(0 0 40px ${hexToRgba(location.emotionColor, isRelated || isSelected ? 0.5 : 0.3)})`,
         }}
       >
         <div
           className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-xs md:text-sm font-medium transition-all duration-300 ${
             isSelected ? 'ring-4 ring-white/30' : ''
-          }`}
+          } ${isRelated ? 'ring-2 ring-white/20' : ''}`}
           style={{
             backgroundColor: location.emotionColor,
             color: textColor,

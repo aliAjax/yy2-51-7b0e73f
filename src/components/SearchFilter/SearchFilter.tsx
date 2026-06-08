@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, X, Filter, ChevronDown } from 'lucide-react';
+import { Search, X, Filter, ChevronDown, Tag } from 'lucide-react';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS } from '@/types';
 
@@ -9,7 +9,17 @@ export function SearchFilter() {
   const filters = useDreamStore((state) => state.filters);
   const setSearchText = useDreamStore((state) => state.setSearchText);
   const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
+  const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
+  const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
   const clearFilters = useDreamStore((state) => state.clearFilters);
+
+  const allTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    locations.forEach((loc) => {
+      loc.tags.forEach((tag) => tagsSet.add(tag));
+    });
+    return Array.from(tagsSet).sort();
+  }, [locations]);
 
   const filteredLocations = useMemo(
     () => filterLocations(locations, filters),
@@ -18,7 +28,7 @@ export function SearchFilter() {
 
   const filteredCount = filteredLocations.length;
   const totalCount = locations.length;
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
 
   return (
     <div className="border-b border-purple-300/10">
@@ -96,6 +106,40 @@ export function SearchFilter() {
                 ))}
               </div>
             </div>
+
+            {allTags.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-purple-300/60 flex items-center gap-1">
+                    <Tag size={12} />
+                    标签筛选
+                  </label>
+                  {filters.selectedTags.length > 0 && (
+                    <button
+                      onClick={clearTagFilter}
+                      className="text-xs text-purple-300/50 hover:text-purple-200 transition-colors"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {allTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleTagFilter(tag)}
+                      className={`px-2 py-1 rounded-full text-xs transition-all ${
+                        filters.selectedTags.includes(tag)
+                          ? 'text-white bg-purple-500/40 border border-purple-400/60'
+                          : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {hasActiveFilters && (
               <button

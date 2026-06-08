@@ -1,10 +1,16 @@
-import { Moon, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Moon, Plus, BarChart3, Clock } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { ImportExport } from '@/components/ImportExport/ImportExport';
+import { DreamStatsPanel } from '@/components/DreamStatsPanel/DreamStatsPanel';
 
 export function Header() {
+  const navigate = useNavigate();
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
   const openForm = useDreamStore((state) => state.openForm);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
 
   return (
     <div className="absolute top-0 left-0 right-0 z-10 p-4 md:p-6">
@@ -33,14 +39,46 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden md:block text-right">
-            <p className="text-lg font-serif text-white">
-              {locations.length}
-            </p>
-            <p className="text-xs text-purple-300/50">
-              梦境地点
-            </p>
+          <div className="hidden md:flex items-center gap-4 text-right">
+            <div>
+              <p className="text-lg font-serif text-white">
+                {locations.length}
+              </p>
+              <p className="text-xs text-purple-300/50">
+                梦境地点
+              </p>
+            </div>
+            <div className="w-px h-8 bg-purple-300/20" />
+            <div>
+              <p className="text-lg font-serif text-white">
+                {relations.length}
+              </p>
+              <p className="text-xs text-purple-300/50">
+                关系连线
+              </p>
+            </div>
           </div>
+
+          <button
+            onClick={() => setIsStatsOpen(true)}
+            className="relative p-2.5 rounded-xl text-purple-200/70 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10 transition-all group"
+            title="梦境统计"
+          >
+            <BarChart3 size={18} className="transition-transform group-hover:scale-110" />
+            {locations.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-medium flex items-center justify-center text-white bg-purple-500 border border-purple-400/50">
+                {locations.length > 99 ? '99+' : locations.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => navigate('/timeline')}
+            className="relative p-2.5 rounded-xl text-purple-200/70 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10 transition-all group"
+            title="梦境时间轴"
+          >
+            <Clock size={18} className="transition-transform group-hover:scale-110" />
+          </button>
 
           <ImportExport />
 
@@ -58,6 +96,8 @@ export function Header() {
           </button>
         </div>
       </div>
+
+      <DreamStatsPanel isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} />
     </div>
   );
 }

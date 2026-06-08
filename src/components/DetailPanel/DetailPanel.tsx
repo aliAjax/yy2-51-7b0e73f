@@ -1,16 +1,42 @@
-import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock } from 'lucide-react';
+import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
-import { FREQUENCY_OPTIONS } from '@/types';
+import { FREQUENCY_OPTIONS, RELATION_TYPE_COLORS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 export function DetailPanel() {
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const openForm = useDreamStore((state) => state.openForm);
   const deleteLocation = useDreamStore((state) => state.deleteLocation);
+  const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
+  const setSidebarOpen = useDreamStore((state) => state.setSidebarOpen);
+  const openRelationForm = useDreamStore((state) => state.openRelationForm);
+  const deleteRelation = useDreamStore((state) => state.deleteRelation);
+  const selectRelation = useDreamStore((state) => state.selectRelation);
+  const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
 
   const location = locations.find((loc) => loc.id === selectedLocationId);
+
+  const locationRelations = selectedLocationId
+    ? relations.filter(
+        (rel) => rel.fromId === selectedLocationId || rel.toId === selectedLocationId
+      )
+    : [];
+
+  const getRelatedLocation = (relationId: string) => {
+    const rel = relations.find((r) => r.id === relationId);
+    if (!rel) return null;
+    const otherId = rel.fromId === selectedLocationId ? rel.toId : rel.fromId;
+    return locations.find((loc) => loc.id === otherId);
+  };
+
+  const handleDeleteRelation = (relationId: string) => {
+    if (confirm('确定要删除这条关系吗？')) {
+      deleteRelation(relationId);
+    }
+  };
 
   if (!location) return null;
 
@@ -124,6 +150,35 @@ export function DetailPanel() {
 
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-purple-300/60 text-xs uppercase tracking-wider">
+              <Tag size={12} />
+              <span>标签</span>
+            </div>
+            {location.tags && location.tags.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {location.tags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => {
+                      toggleTagFilter(tag);
+                      setSidebarOpen(true);
+                    }}
+                    className="px-2.5 py-1 rounded-full text-xs text-white transition-all hover:scale-105"
+                    style={{
+                      backgroundColor: hexToRgba(location.emotionColor, 0.25),
+                      border: `1px solid ${hexToRgba(location.emotionColor, 0.5)}`,
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-purple-300/40 italic">暂无标签</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-purple-300/60 text-xs uppercase tracking-wider">
               <Calendar size={12} />
               <span>记忆片段</span>
             </div>
@@ -136,6 +191,116 @@ export function DetailPanel() {
             >
               {location.memoryFragment || '醒来后记忆已经模糊...'}
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-purple-300/60 text-xs uppercase tracking-wider">
+                <Link size={12} />
+                <span>相关梦境</span>
+                <span className="text-purple-300/40">({locationRelations.length})</span>
+              </div>
+              <button
+                onClick={() => openRelationForm(undefined, location.id)}
+                className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all"
+                title="添加关系"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+
+            {locationRelations.length === 0 ? (
+              <div className="p-4 rounded-lg text-center">
+                <p className="text-sm text-purple-300/40 italic">暂无关联梦境</p>
+                <button
+                  onClick={() => openRelationForm(undefined, location.id)}
+                  className="mt-2 text-xs text-purple-300/60 hover:text-purple-200 transition-colors"
+                >
+                  + 添加第一条关系
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {locationRelations.map((rel) => {
+                  const relatedLoc = getRelatedLocation(rel.id);
+                  if (!relatedLoc) return null;
+                  const typeColor = RELATION_TYPE_COLORS[rel.type];
+                  const isSelected = selectedRelationId === rel.id;
+
+                  return (
+                    <div
+                      key={rel.id}
+                      className={`p-3 rounded-lg transition-all cursor-pointer group ${
+                        isSelected ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'
+                      }`}
+                      style={{
+                        border: `1px solid ${isSelected ? hexToRgba(typeColor, 0.5) : 'rgba(150, 130, 200, 0.1)'}`,
+                      }}
+                      onClick={() => {
+                        selectRelation(rel.id);
+                        selectLocation(null);
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
+                          style={{
+                            backgroundColor: hexToRgba(relatedLoc.emotionColor, 0.2),
+                            border: `1px solid ${hexToRgba(relatedLoc.emotionColor, 0.4)}`,
+                          }}
+                        >
+                          <Sparkles size={14} style={{ color: relatedLoc.emotionColor }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white font-medium truncate">
+                            {relatedLoc.name}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded-full"
+                              style={{
+                                backgroundColor: hexToRgba(typeColor, 0.15),
+                                color: typeColor,
+                                border: `1px solid ${hexToRgba(typeColor, 0.3)}`,
+                              }}
+                            >
+                              {rel.type}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRelationForm(rel);
+                            }}
+                            className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all"
+                            title="编辑"
+                          >
+                            <Edit3 size={12} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteRelation(rel.id);
+                            }}
+                            className="p-1.5 rounded-lg text-red-400/70 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                            title="删除"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      {rel.description && (
+                        <p className="mt-2 text-xs text-purple-200/60 line-clamp-2 pl-11">
+                          {rel.description}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-purple-300/10">

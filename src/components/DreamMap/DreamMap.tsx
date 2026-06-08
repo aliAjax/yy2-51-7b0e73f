@@ -1,8 +1,34 @@
-import { useRef, useEffect, useMemo } from 'react';
-import { SearchX } from 'lucide-react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { Play, SearchX } from 'lucide-react';
 import { DreamNode } from './DreamNode';
+import { DreamPlayback } from './DreamPlayback';
 import { RelationLines } from './RelationLines';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
+import { FREQUENCY_OPTIONS } from '@/types';
+import type { PlaybackSortMode } from './DreamPlayback';
+
+interface PlaybackSelectionSnapshot {
+  locationId: string | null;
+  relationId: string | null;
+}
+
+const frequencyRank = new Map(FREQUENCY_OPTIONS.map((frequency, index) => [frequency, index]));
+
+function sortPlaybackLocations(
+  locations: ReturnType<typeof filterLocations>,
+  mode: PlaybackSortMode
+) {
+  return [...locations].sort((a, b) => {
+    if (mode === 'frequency') {
+      const rankDiff =
+        (frequencyRank.get(b.frequency as (typeof FREQUENCY_OPTIONS)[number]) ?? -1) -
+        (frequencyRank.get(a.frequency as (typeof FREQUENCY_OPTIONS)[number]) ?? -1);
+      if (rankDiff !== 0) return rankDiff;
+    }
+
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+}
 
 export function DreamMap() {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -10,6 +36,14 @@ export function DreamMap() {
   const filters = useDreamStore((state) => state.filters);
   const clearFilters = useDreamStore((state) => state.clearFilters);
   const selectLocation = useDreamStore((state) => state.selectLocation);
+  const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
+  const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
+  const selectRelation = useDreamStore((state) => state.selectRelation);
+  const [isPlaybackMode, setIsPlaybackMode] = useState(false);
+  const [isPlaybackPaused, setIsPlaybackPaused] = useState(false);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [sortMode, setSortMode] = useState<PlaybackSortMode>('createdAt');
+  const selectionSnapshotRef = useRef<PlaybackSelectionSnapshot | null>(null);
 
   const filteredLocations = useMemo(
     () => filterLocations(locations, filters),
@@ -18,6 +52,118 @@ export function DreamMap() {
 
   const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
   const hasResults = filteredLocations.length > 0;
+
+  const playbackLocations = useMemo(() => {
+    return sortPlaybackLocations(filteredLocations, sortMode);
+  }, [filteredLocations, sortMode]);
+
+  const currentPlaybackLocation = playbackLocations[playbackIndex] || null;
+
+  const stopPlayback = useCallback(() => {
+    const snapshot = selectionSnapshotRef.current;
+    setIsPlaybackMode(false);
+    setIsPlaybackPaused(false);
+    selectionSnapshotRef.current = null;
+    selectLocation(snapshot?.locationId ?? null);
+    selectRelation(snapshot?.relationId ?? null);
+  }, [selectLocation, selectRelation]);
+
+  const startPlayback = () => {
+    if (playbackLocations.length === 0) return;
+
+    selectionSnapshotRef.current = {
+      locationId: selectedLocationId,
+      relationId: selectedRelationId,
+    };
+    setPlaybackIndex(0);
+    setIsPlaybackPaused(false);
+    setIsPlaybackMode(true);
+    selectRelation(null);
+    selectLocation(playbackLocations[0].id);
+  };
+
+  const goToPrevious = useCallback(() => {
+    setPlaybackIndex((index) => Math.max(0, index - 1));
+  }, []);
+
+  const goToNext = useCallback(() => {
+    setPlaybackIndex((index) => Math.min(playbackLocations.length - 1, index + 1));
+  }, [playbackLocations.length]);
+
+  const handleSortModeChange = (mode: PlaybackSortMode) => {
+    if (mode === sortMode) return;
+
+    const currentId = currentPlaybackLocation?.id;
+    setSortMode(mode);
+
+    if (!currentId) {
+      setPlaybackIndex(0);
+      return;
+    }
+
+    const nextOrder = sortPlaybackLocations(filteredLocations, mode);
+    setPlaybackIndex(Math.max(0, nextOrder.findIndex((location) => location.id === currentId)));
+  };
+
+  useEffect(() => {
+    if (!isPlaybackMode) return;
+
+    if (playbackLocations.length === 0) {
+      stopPlayback();
+      return;
+    }
+
+    if (playbackIndex >= playbackLocations.length) {
+      setPlaybackIndex(playbackLocations.length - 1);
+    }
+  }, [isPlaybackMode, playbackIndex, playbackLocations.length, stopPlayback]);
+
+  useEffect(() => {
+    if (!isPlaybackMode || !currentPlaybackLocation) return;
+
+    selectRelation(null);
+    selectLocation(currentPlaybackLocation.id);
+  }, [currentPlaybackLocation, isPlaybackMode, selectLocation, selectRelation]);
+
+  useEffect(() => {
+    if (!isPlaybackMode || isPlaybackPaused || playbackLocations.length <= 1) return;
+    if (playbackIndex >= playbackLocations.length - 1) return;
+
+    const timer = window.setTimeout(() => {
+      setPlaybackIndex((index) => Math.min(playbackLocations.length - 1, index + 1));
+    }, 4800);
+
+    return () => window.clearTimeout(timer);
+  }, [isPlaybackMode, isPlaybackPaused, playbackIndex, playbackLocations.length]);
+
+  useEffect(() => {
+    if (!isPlaybackMode) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        stopPlayback();
+      }
+
+      if (event.key === ' ') {
+        event.preventDefault();
+        setIsPlaybackPaused((paused) => !paused);
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        goToPrevious();
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        goToNext();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToNext, goToPrevious, isPlaybackMode, stopPlayback]);
 
   useEffect(() => {
     const canvas = document.createElement('canvas');
@@ -94,9 +240,8 @@ export function DreamMap() {
     };
   }, []);
 
-  const selectRelation = useDreamStore((state) => state.selectRelation);
-
   const handleMapClick = () => {
+    if (isPlaybackMode) return;
     selectLocation(null);
     selectRelation(null);
   };
@@ -167,8 +312,37 @@ export function DreamMap() {
       <RelationLines locations={filteredLocations} />
 
       {filteredLocations.map((location) => (
-        <DreamNode key={location.id} location={location} />
+        <DreamNode key={location.id} location={location} isPlaybackMode={isPlaybackMode} />
       ))}
+
+      {hasResults && !isPlaybackMode && (
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            startPlayback();
+          }}
+          className="absolute right-4 bottom-4 md:right-6 md:bottom-6 z-30 inline-flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-white border border-purple-300/30 bg-white/10 hover:bg-white/15 backdrop-blur-md transition-all"
+          title="梦境回顾"
+        >
+          <Play size={17} />
+          <span>梦境回顾</span>
+        </button>
+      )}
+
+      {isPlaybackMode && currentPlaybackLocation && (
+        <DreamPlayback
+          currentLocation={currentPlaybackLocation}
+          currentIndex={playbackIndex}
+          totalCount={playbackLocations.length}
+          isPaused={isPlaybackPaused}
+          sortMode={sortMode}
+          onTogglePause={() => setIsPlaybackPaused((paused) => !paused)}
+          onPrevious={goToPrevious}
+          onNext={goToNext}
+          onExit={stopPlayback}
+          onSortModeChange={handleSortModeChange}
+        />
+      )}
     </div>
   );
 }

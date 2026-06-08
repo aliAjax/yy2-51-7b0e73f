@@ -5,9 +5,10 @@ import { hexToRgba, getContrastColor } from '@/utils/storage';
 
 interface DreamNodeProps {
   location: DreamLocation;
+  isPlaybackMode?: boolean;
 }
 
-export function DreamNode({ location }: DreamNodeProps) {
+export function DreamNode({ location, isPlaybackMode = false }: DreamNodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -42,6 +43,8 @@ export function DreamNode({ location }: DreamNodeProps) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isPlaybackMode) return;
+
     const rect = nodeRef.current?.getBoundingClientRect();
     if (rect) {
       setDragOffset({
@@ -50,9 +53,11 @@ export function DreamNode({ location }: DreamNodeProps) {
       });
       setIsDragging(true);
     }
-  }, []);
+  }, [isPlaybackMode]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (isPlaybackMode) return;
+
     const touch = e.touches[0];
     const rect = nodeRef.current?.getBoundingClientRect();
     if (rect) {
@@ -62,7 +67,7 @@ export function DreamNode({ location }: DreamNodeProps) {
       });
       setIsDragging(true);
     }
-  }, []);
+  }, [isPlaybackMode]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -115,7 +120,7 @@ export function DreamNode({ location }: DreamNodeProps) {
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isDragging) {
+    if (!isDragging && !isPlaybackMode) {
       selectLocation(location.id);
     }
   };
@@ -124,20 +129,23 @@ export function DreamNode({ location }: DreamNodeProps) {
 
   const hasSelection = selectedLocationId || selectedRelationId;
   const isDimmed = hasSelection && !isSelected && !isRelated;
+  const nodeScale = isPlaybackMode && isSelected ? 1.24 : isDragging ? 1.1 : isSelected ? 1.05 : 1;
 
   return (
     <div
       ref={nodeRef}
       className={`absolute cursor-grab select-none transition-all duration-300 ${
         isDragging ? 'cursor-grabbing z-50 scale-110' : 'z-10 hover:scale-105'
-      } ${isSelected ? 'z-20 scale-105' : ''} ${isRelated ? 'z-15 scale-102' : ''}`}
+      } ${isSelected ? 'z-20 scale-105' : ''} ${isRelated ? 'z-15 scale-102' : ''} ${
+        isPlaybackMode ? 'cursor-default hover:scale-100' : ''
+      }`}
       style={{
         left: `${location.positionX}%`,
         top: `${location.positionY}%`,
-        transform: 'translate(-50%, -50%)',
+        transform: `translate(-50%, -50%) scale(${nodeScale})`,
         animation: isSelected || isDragging ? 'none' : 'float 6s ease-in-out infinite',
         animationDelay: `${parseInt(location.id.slice(-2), 36) % 10 * 0.3}s`,
-        opacity: isDimmed ? 0.3 : 1,
+        opacity: isDimmed ? (isPlaybackMode ? 0.18 : 0.3) : 1,
       }}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
@@ -152,7 +160,9 @@ export function DreamNode({ location }: DreamNodeProps) {
         <div
           className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-xs md:text-sm font-medium transition-all duration-300 ${
             isSelected ? 'ring-4 ring-white/30' : ''
-          } ${isRelated ? 'ring-2 ring-white/20' : ''}`}
+          } ${isRelated ? 'ring-2 ring-white/20' : ''} ${
+            isPlaybackMode && isSelected ? 'ring-4 ring-white/50 animate-pulse-glow' : ''
+          }`}
           style={{
             backgroundColor: location.emotionColor,
             color: textColor,

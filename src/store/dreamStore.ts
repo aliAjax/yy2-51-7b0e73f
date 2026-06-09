@@ -8,9 +8,15 @@ import { clusterLocations, arrangeLocationsInCluster } from '@/utils/clustering'
 export function filterLocations(
   locations: DreamLocation[],
   relations: DreamRelation[],
-  filters: { searchText: string; frequency: string; selectedTags: string[]; selectedRelationTypes: RelationType[] }
+  filters: {
+    searchText: string;
+    frequency: string;
+    selectedTags: string[];
+    selectedPeople: string[];
+    selectedRelationTypes: RelationType[];
+  }
 ): DreamLocation[] {
-  const { searchText, frequency, selectedTags, selectedRelationTypes } = filters;
+  const { searchText, frequency, selectedTags, selectedPeople, selectedRelationTypes } = filters;
 
   let relationFilteredLocationIds: Set<string> | null = null;
   if (selectedRelationTypes.length > 0) {
@@ -45,6 +51,17 @@ export function filterLocations(
     if (selectedTags.length > 0) {
       const hasAllTags = selectedTags.every((tag) => location.tags.includes(tag));
       if (!hasAllTags) {
+        return false;
+      }
+    }
+
+    if (selectedPeople.length > 0) {
+      const people = location.relatedPeople
+        .split(/[,，、\s]+/)
+        .map((person) => person.trim())
+        .filter((person) => person.length > 0);
+      const hasAllPeople = selectedPeople.every((person) => people.includes(person));
+      if (!hasAllPeople) {
         return false;
       }
     }
@@ -92,6 +109,7 @@ interface FilterState {
   searchText: string;
   frequency: string;
   selectedTags: string[];
+  selectedPeople: string[];
   selectedRelationTypes: RelationType[];
   timelineEventTypes: EventTypeFilter[];
 }
@@ -183,6 +201,8 @@ interface DreamActions {
   setSidebarOpen: (open: boolean) => void;
   setSearchText: (text: string) => void;
   setFrequencyFilter: (frequency: string) => void;
+  setPersonFilter: (person: string) => void;
+  clearPersonFilter: () => void;
   toggleTagFilter: (tag: string) => void;
   clearTagFilter: () => void;
   toggleRelationTypeFilter: (type: RelationType) => void;
@@ -272,6 +292,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     searchText: '',
     frequency: '',
     selectedTags: [],
+    selectedPeople: [],
     selectedRelationTypes: [],
     timelineEventTypes: [],
   },
@@ -581,6 +602,28 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     });
   },
 
+  setPersonFilter: (person) => {
+    set((state) => {
+      const selectedPeople = person ? [person] : [];
+      const newFilters = { ...state.filters, selectedPeople };
+      const filtered = filterLocations(state.locations, state.relations, newFilters);
+      const selectedStillExists = state.selectedLocationId
+        ? filtered.some((loc) => loc.id === state.selectedLocationId)
+        : true;
+
+      return {
+        filters: newFilters,
+        selectedLocationId: selectedStillExists ? state.selectedLocationId : null,
+      };
+    });
+  },
+
+  clearPersonFilter: () => {
+    set((state) => ({
+      filters: { ...state.filters, selectedPeople: [] },
+    }));
+  },
+
   toggleTagFilter: (tag) => {
     set((state) => {
       const selectedTags = state.filters.selectedTags.includes(tag)
@@ -673,6 +716,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         searchText: '',
         frequency: '',
         selectedTags: [],
+        selectedPeople: [],
         selectedRelationTypes: [],
         timelineEventTypes: [],
       },
@@ -1000,7 +1044,13 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       selectedLocationId: centerId,
       selectedRelationId: null,
       preExploreState: {
-        filters: { ...state.filters, selectedTags: [...state.filters.selectedTags], selectedRelationTypes: [...state.filters.selectedRelationTypes], timelineEventTypes: [...state.filters.timelineEventTypes] },
+        filters: {
+          ...state.filters,
+          selectedTags: [...state.filters.selectedTags],
+          selectedPeople: [...state.filters.selectedPeople],
+          selectedRelationTypes: [...state.filters.selectedRelationTypes],
+          timelineEventTypes: [...state.filters.timelineEventTypes],
+        },
         selectedLocationId: state.selectedLocationId,
         selectedRelationId: state.selectedRelationId,
         viewTransform: viewTransform || null,
@@ -1029,6 +1079,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       filters: {
         ...preState.filters,
         selectedTags: [...preState.filters.selectedTags],
+        selectedPeople: [...preState.filters.selectedPeople],
         selectedRelationTypes: [...preState.filters.selectedRelationTypes],
         timelineEventTypes: [...preState.filters.timelineEventTypes],
       },

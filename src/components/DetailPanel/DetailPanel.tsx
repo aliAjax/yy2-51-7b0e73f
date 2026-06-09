@@ -19,7 +19,7 @@ export function DetailPanel() {
   const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
   const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
   const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
-  const setSearchText = useDreamStore((state) => state.setSearchText);
+  const setPersonFilter = useDreamStore((state) => state.setPersonFilter);
   const toggleRelationTypeFilter = useDreamStore((state) => state.toggleRelationTypeFilter);
   const clearRelationTypeFilter = useDreamStore((state) => state.clearRelationTypeFilter);
   const setSidebarOpen = useDreamStore((state) => state.setSidebarOpen);
@@ -52,7 +52,7 @@ export function DetailPanel() {
   };
 
   const handlePersonClick = (personName: string) => {
-    setSearchText(personName);
+    setPersonFilter(personName);
     setSidebarOpen(true);
     selectLocation(null);
   };

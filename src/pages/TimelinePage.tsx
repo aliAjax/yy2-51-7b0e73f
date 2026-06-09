@@ -123,7 +123,13 @@ export default function TimelinePage() {
     return count;
   }, [filteredLocations]);
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0 || filters.timelineEventTypes.length > 0;
+  const hasActiveFilters =
+    !!filters.searchText.trim() ||
+    !!filters.frequency ||
+    filters.selectedTags.length > 0 ||
+    filters.selectedPeople.length > 0 ||
+    filters.selectedRelationTypes.length > 0 ||
+    filters.timelineEventTypes.length > 0;
 
   const formatMonth = (key: string) => {
     const [year, month] = key.split('-');

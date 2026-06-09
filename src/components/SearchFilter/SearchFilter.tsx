@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, X, Filter, ChevronDown, Tag, Link } from 'lucide-react';
+import { Search, X, Filter, ChevronDown, Tag, Link, Users } from 'lucide-react';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS, RELATION_TYPES, RELATION_TYPE_COLORS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
@@ -11,6 +11,7 @@ export function SearchFilter() {
   const filters = useDreamStore((state) => state.filters);
   const setSearchText = useDreamStore((state) => state.setSearchText);
   const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
+  const clearPersonFilter = useDreamStore((state) => state.clearPersonFilter);
   const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
   const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
   const toggleRelationTypeFilter = useDreamStore((state) => state.toggleRelationTypeFilter);
@@ -32,7 +33,12 @@ export function SearchFilter() {
 
   const filteredCount = filteredLocations.length;
   const totalCount = locations.length;
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
+  const hasActiveFilters =
+    !!filters.searchText.trim() ||
+    !!filters.frequency ||
+    filters.selectedTags.length > 0 ||
+    filters.selectedPeople.length > 0 ||
+    filters.selectedRelationTypes.length > 0;
 
   return (
     <div className="border-b border-purple-300/10">
@@ -140,6 +146,33 @@ export function SearchFilter() {
                     >
                       {tag}
                     </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {filters.selectedPeople.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-purple-300/60 flex items-center gap-1">
+                    <Users size={12} />
+                    人物筛选
+                  </label>
+                  <button
+                    onClick={clearPersonFilter}
+                    className="text-xs text-purple-300/50 hover:text-purple-200 transition-colors"
+                  >
+                    清除
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {filters.selectedPeople.map((person) => (
+                    <span
+                      key={person}
+                      className="px-2 py-1 rounded-full text-xs text-white bg-blue-500/30 border border-blue-400/50"
+                    >
+                      {person}
+                    </span>
                   ))}
                 </div>
               </div>

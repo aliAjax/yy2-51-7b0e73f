@@ -64,7 +64,7 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
   const allLocations = useDreamStore((state) => state.locations);
   const allRelations = useDreamStore((state) => state.relations);
   const filters = useDreamStore((state) => state.filters);
-  const setSearchText = useDreamStore((state) => state.setSearchText);
+  const setPersonFilter = useDreamStore((state) => state.setPersonFilter);
   const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
   const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
   const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
@@ -98,7 +98,7 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
   };
 
   const handlePersonClick = (personName: string) => {
-    setSearchText(personName);
+    setPersonFilter(personName);
     setSidebarOpen(true);
     onClose();
   };

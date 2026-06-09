@@ -94,10 +94,8 @@ export function DreamMap() {
   const setClusterPositions = useDreamStore((state) => state.setClusterPositions);
   const isExploreMode = useDreamStore((state) => state.isExploreMode);
   const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
-  const preExploreState = useDreamStore((state) => state.preExploreState);
   const getExploreLocations = useDreamStore((state) => state.getExploreLocations);
   const enterExploreMode = useDreamStore((state) => state.enterExploreMode);
-  const exitExploreMode = useDreamStore((state) => state.exitExploreMode);
 
   const prevIsExploreModeRef = useRef(false);
   const exploreCenterRef = useRef<string | null>(null);
@@ -169,7 +167,12 @@ export function DreamMap() {
     });
   }, [viewMode, filteredLocations, clusterPositions]);
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
+  const hasActiveFilters =
+    !!filters.searchText.trim() ||
+    !!filters.frequency ||
+    filters.selectedTags.length > 0 ||
+    filters.selectedPeople.length > 0 ||
+    filters.selectedRelationTypes.length > 0;
   const hasResults = filteredLocations.length > 0;
 
   useEffect(() => {

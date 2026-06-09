@@ -89,7 +89,13 @@ export function Sidebar() {
     });
   }, [filteredLocations, isExploreMode, relationLevelMap]);
 
-  const hasActiveFilters = isExploreMode || !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
+  const hasActiveFilters =
+    isExploreMode ||
+    !!filters.searchText.trim() ||
+    !!filters.frequency ||
+    filters.selectedTags.length > 0 ||
+    filters.selectedPeople.length > 0 ||
+    filters.selectedRelationTypes.length > 0;
   const hasResults = filteredLocations.length > 0;
 
   return (

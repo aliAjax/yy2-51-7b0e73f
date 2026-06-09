@@ -12,6 +12,9 @@ export function RelationLines({ locations }: RelationLinesProps) {
   const relations = useDreamStore((state) => state.relations);
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
   const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const getExploreVisibleRelations = useDreamStore((state) => state.getExploreVisibleRelations);
   const selectRelation = useDreamStore((state) => state.selectRelation);
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const openRelationForm = useDreamStore((state) => state.openRelationForm);
@@ -25,10 +28,11 @@ export function RelationLines({ locations }: RelationLinesProps) {
   }, [locations]);
 
   const visibleRelations = useMemo(() => {
-    return relations.filter(
+    const sourceRelations = isExploreMode ? getExploreVisibleRelations() : relations;
+    return sourceRelations.filter(
       (rel) => locationMap.has(rel.fromId) && locationMap.has(rel.toId)
     );
-  }, [relations, locationMap]);
+  }, [relations, locationMap, isExploreMode, getExploreVisibleRelations]);
 
   const relatedRelationIds = useMemo(() => {
     const locationId = selectedLocationId;
@@ -86,6 +90,7 @@ export function RelationLines({ locations }: RelationLinesProps) {
   const isRelationHighlighted = (rel: DreamRelation): boolean => {
     if (selectedRelationId === rel.id) return true;
     if (hoveredRelationId === rel.id) return true;
+    if (isExploreMode && exploreCenterId && (rel.fromId === exploreCenterId || rel.toId === exploreCenterId)) return true;
     if (selectedLocationId && relatedRelationIds.has(rel.id)) return true;
     return false;
   };

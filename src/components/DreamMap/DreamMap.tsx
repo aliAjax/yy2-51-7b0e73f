@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo } from 'react';
 import { SearchX } from 'lucide-react';
 import { DreamNode } from './DreamNode';
 import { RelationLines } from './RelationLines';
+import { ExploreControls } from '@/components/ExploreControls/ExploreControls';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 
 export function DreamMap() {
@@ -10,14 +11,18 @@ export function DreamMap() {
   const filters = useDreamStore((state) => state.filters);
   const clearFilters = useDreamStore((state) => state.clearFilters);
   const selectLocation = useDreamStore((state) => state.selectLocation);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const getExploreLocations = useDreamStore((state) => state.getExploreLocations);
 
   const filteredLocations = useMemo(
     () => filterLocations(locations, filters),
     [locations, filters]
   );
+  const exploreLocations = useDreamStore(() => getExploreLocations());
+  const displayLocations = isExploreMode ? exploreLocations : filteredLocations;
 
   const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
-  const hasResults = filteredLocations.length > 0;
+  const hasResults = displayLocations.length > 0;
 
   useEffect(() => {
     const canvas = document.createElement('canvas');
@@ -146,7 +151,7 @@ export function DreamMap() {
         </div>
       )}
 
-      {locations.length > 0 && !hasResults && hasActiveFilters && (
+      {locations.length > 0 && !hasResults && hasActiveFilters && !isExploreMode && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="text-center text-purple-200/50 animate-fade-in">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-purple-500/10 border border-purple-400/20">
@@ -164,9 +169,11 @@ export function DreamMap() {
         </div>
       )}
 
-      <RelationLines locations={filteredLocations} />
+      <ExploreControls />
 
-      {filteredLocations.map((location) => (
+      <RelationLines locations={displayLocations} />
+
+      {displayLocations.map((location) => (
         <DreamNode key={location.id} location={location} />
       ))}
     </div>

@@ -1,4 +1,4 @@
-import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus } from 'lucide-react';
+import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus, Network } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS, RELATION_TYPE_COLORS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
@@ -16,6 +16,11 @@ export function DetailPanel() {
   const deleteRelation = useDreamStore((state) => state.deleteRelation);
   const selectRelation = useDreamStore((state) => state.selectRelation);
   const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const enterExploreMode = useDreamStore((state) => state.enterExploreMode);
+  const exitExploreMode = useDreamStore((state) => state.exitExploreMode);
+  const setExploreCenter = useDreamStore((state) => state.setExploreCenter);
 
   const location = locations.find((loc) => loc.id === selectedLocationId);
 
@@ -37,6 +42,8 @@ export function DetailPanel() {
       deleteRelation(relationId);
     }
   };
+
+  const isExploreCenter = isExploreMode && exploreCenterId === selectedLocationId;
 
   if (!location) return null;
 
@@ -85,6 +92,11 @@ export function DetailPanel() {
             <h2 className="text-2xl font-serif text-white font-medium tracking-wide">
               {location.name}
             </h2>
+            {isExploreCenter && (
+              <span className="mt-2 inline-flex rounded-full bg-cyan-300/20 px-2 py-0.5 text-xs text-cyan-50 border border-cyan-200/30">
+                探索中心
+              </span>
+            )}
           </div>
         </div>
 
@@ -207,6 +219,17 @@ export function DetailPanel() {
               >
                 <Plus size={14} />
               </button>
+              <button
+                onClick={() => (isExploreCenter ? exitExploreMode() : enterExploreMode(location.id))}
+                className={`p-1.5 rounded-lg transition-all ${
+                  isExploreCenter
+                    ? 'text-cyan-100 bg-cyan-300/15 border border-cyan-200/30'
+                    : 'text-purple-300/60 hover:text-purple-200 hover:bg-white/10'
+                }`}
+                title={isExploreCenter ? '退出关系探索' : '进入关系探索'}
+              >
+                <Network size={14} />
+              </button>
             </div>
 
             {locationRelations.length === 0 ? (
@@ -242,19 +265,33 @@ export function DetailPanel() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectRelation(null);
+                            selectLocation(relatedLoc.id);
+                          }}
                           className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
                           style={{
                             backgroundColor: hexToRgba(relatedLoc.emotionColor, 0.2),
                             border: `1px solid ${hexToRgba(relatedLoc.emotionColor, 0.4)}`,
                           }}
+                          title={`打开 ${relatedLoc.name}`}
                         >
                           <Sparkles size={14} style={{ color: relatedLoc.emotionColor }} />
-                        </div>
+                        </button>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white font-medium truncate">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              selectRelation(null);
+                              selectLocation(relatedLoc.id);
+                            }}
+                            className="block max-w-full truncate text-left text-sm font-medium text-white hover:underline"
+                            title={`打开 ${relatedLoc.name}`}
+                          >
                             {relatedLoc.name}
-                          </p>
+                          </button>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span
                               className="text-[10px] px-1.5 py-0.5 rounded-full"
@@ -269,6 +306,18 @@ export function DetailPanel() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {isExploreMode && exploreCenterId !== relatedLoc.id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExploreCenter(relatedLoc.id);
+                              }}
+                              className="p-1.5 rounded-lg text-cyan-200/70 hover:text-cyan-100 hover:bg-cyan-300/10 transition-all"
+                              title="设为探索中心"
+                            >
+                              <Network size={12} />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

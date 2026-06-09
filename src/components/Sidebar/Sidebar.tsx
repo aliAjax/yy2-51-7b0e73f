@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { BookOpen, Plus, ChevronLeft, ChevronRight, SearchX } from 'lucide-react';
+import { BookOpen, Plus, ChevronLeft, ChevronRight, SearchX, Network } from 'lucide-react';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 import { hexToRgba } from '@/utils/storage';
 import { SearchFilter } from '@/components/SearchFilter/SearchFilter';
@@ -13,14 +13,28 @@ export function Sidebar() {
   const openForm = useDreamStore((state) => state.openForm);
   const isSidebarOpen = useDreamStore((state) => state.isSidebarOpen);
   const toggleSidebar = useDreamStore((state) => state.toggleSidebar);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const getExploreLocations = useDreamStore((state) => state.getExploreLocations);
+  const getExploreDistance = useDreamStore((state) => state.getExploreDistance);
 
   const filteredLocations = useMemo(
     () => filterLocations(locations, filters),
     [locations, filters]
   );
+  const exploreLocations = useDreamStore(() => getExploreLocations());
+  const visibleLocations = useMemo(() => {
+    if (!isExploreMode) return filteredLocations;
+    return [...exploreLocations].sort((a, b) => {
+      const aDistance = getExploreDistance(a.id);
+      const bDistance = getExploreDistance(b.id);
+      return (aDistance ?? 99) - (bDistance ?? 99) || a.name.localeCompare(b.name);
+    });
+  }, [isExploreMode, filteredLocations, exploreLocations, getExploreDistance]);
+  const exploreCenter = locations.find((loc) => loc.id === exploreCenterId);
 
   const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
-  const hasResults = filteredLocations.length > 0;
+  const hasResults = visibleLocations.length > 0;
 
   return (
     <>
@@ -40,7 +54,7 @@ export function Sidebar() {
             boxShadow: '5px 0 30px rgba(0, 0, 0, 0.3)',
           }}
         >
-          <SearchFilter />
+          {!isExploreMode && <SearchFilter />}
 
           <div className="p-5 border-b border-purple-300/10">
             <div className="flex items-center gap-3">
@@ -51,14 +65,22 @@ export function Sidebar() {
                   border: '1px solid rgba(155, 89, 182, 0.3)',
                 }}
               >
-                <BookOpen size={20} className="text-purple-300" />
+                {isExploreMode ? (
+                  <Network size={20} className="text-cyan-200" />
+                ) : (
+                  <BookOpen size={20} className="text-purple-300" />
+                )}
               </div>
               <div>
-                <h2 className="text-sm font-serif text-white font-medium">梦境档案</h2>
+                <h2 className="text-sm font-serif text-white font-medium">
+                  {isExploreMode ? '关系探索' : '梦境档案'}
+                </h2>
                 <p className="text-xs text-purple-300/50">
-                  {hasActiveFilters
-                    ? `${filteredLocations.length} / ${locations.length} 个地点`
-                    : `${locations.length} 个地点`}
+                  {isExploreMode
+                    ? `围绕「${exploreCenter?.name || '未知地点'}」`
+                    : hasActiveFilters
+                      ? `${filteredLocations.length} / ${locations.length} 个地点`
+                      : `${locations.length} 个地点`}
                 </p>
               </div>
             </div>
@@ -101,7 +123,12 @@ export function Sidebar() {
                 </button>
               </div>
             ) : (
-              filteredLocations.map((location) => (
+              visibleLocations.map((location) => {
+                const distance = getExploreDistance(location.id);
+                const distanceLabel =
+                  distance === 0 ? '中心' : distance === 1 ? '一度' : distance === 2 ? '二度' : null;
+
+                return (
                 <button
                   key={location.id}
                   onClick={() => selectLocation(location.id)}
@@ -132,6 +159,22 @@ export function Sidebar() {
                       <p className="text-xs text-purple-300/40 truncate">
                         {location.frequency}
                       </p>
+                      {distanceLabel && (
+                        <span
+                          className="mt-1.5 inline-flex rounded-full px-1.5 py-0.5 text-[10px]"
+                          style={{
+                            color: distance === 0 ? '#67e8f9' : distance === 1 ? '#c4b5fd' : '#f0abfc',
+                            backgroundColor:
+                              distance === 0
+                                ? 'rgba(34, 211, 238, 0.12)'
+                                : distance === 1
+                                  ? 'rgba(167, 139, 250, 0.12)'
+                                  : 'rgba(232, 121, 249, 0.12)',
+                          }}
+                        >
+                          {distanceLabel}
+                        </span>
+                      )}
                       {location.tags && location.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {location.tags.slice(0, 3).map((tag) => (
@@ -152,7 +195,8 @@ export function Sidebar() {
                     </div>
                   </div>
                 </button>
-              ))
+                );
+              })
             )}
           </div>
         </div>

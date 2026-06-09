@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { RELATION_TYPES } from '@/types';
 import type { DreamLocation, DreamRelation, RelationType } from '@/types';
 import { loadDreamLocations, saveDreamLocations, loadDreamRelations, saveDreamRelations, generateId } from '@/utils/storage';
 
@@ -43,6 +44,14 @@ interface FilterState {
   selectedTags: string[];
 }
 
+export type ExploreDepth = 1 | 2;
+
+interface PreExploreState {
+  selectedLocationId: string | null;
+  selectedRelationId: string | null;
+  filters: FilterState;
+}
+
 interface DreamState {
   locations: DreamLocation[];
   relations: DreamRelation[];
@@ -55,6 +64,11 @@ interface DreamState {
   defaultFromId: string | null;
   isSidebarOpen: boolean;
   filters: FilterState;
+  isExploreMode: boolean;
+  exploreCenterId: string | null;
+  exploreDepth: ExploreDepth;
+  visibleRelationTypes: RelationType[];
+  preExploreState: PreExploreState | null;
 }
 
 interface DreamActions {
@@ -81,6 +95,15 @@ interface DreamActions {
   clearFilters: () => void;
   getFilteredLocations: () => DreamLocation[];
   getAllTags: () => string[];
+  enterExploreMode: (centerId: string) => void;
+  exitExploreMode: () => void;
+  setExploreDepth: (depth: ExploreDepth) => void;
+  toggleRelationTypeVisibility: (type: RelationType) => void;
+  setExploreCenter: (centerId: string) => void;
+  getExploreLocationIds: () => Set<string>;
+  getExploreLocations: () => DreamLocation[];
+  getExploreVisibleRelations: () => DreamRelation[];
+  getExploreDistance: (locationId: string) => ExploreDepth | 0 | null;
   importLocations: (imported: DreamLocation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
   exportLocations: () => DreamLocation[];
   importRelations: (imported: DreamRelation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
@@ -105,6 +128,11 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     frequency: '',
     selectedTags: [],
   },
+  isExploreMode: false,
+  exploreCenterId: null,
+  exploreDepth: 1,
+  visibleRelationTypes: [...RELATION_TYPES],
+  preExploreState: null,
 
   addLocation: (data) => {
     const now = new Date().toISOString();
@@ -162,6 +190,15 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   },
 
   selectLocation: (id) => {
+    const state = get();
+    if (state.isExploreMode && id) {
+      set({
+        selectedLocationId: id,
+        selectedRelationId: null,
+        exploreCenterId: id,
+      });
+      return;
+    }
     set({ selectedLocationId: id });
   },
 
@@ -322,6 +359,156 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       loc.tags.forEach((tag) => tagsSet.add(tag));
     });
     return Array.from(tagsSet).sort();
+  },
+
+  enterExploreMode: (centerId) => {
+    const state = get();
+    const centerExists = state.locations.some((loc) => loc.id === centerId);
+    if (!centerExists) return;
+
+    set({
+      isExploreMode: true,
+      exploreCenterId: centerId,
+      exploreDepth: 1,
+      visibleRelationTypes: [...RELATION_TYPES],
+      selectedLocationId: centerId,
+      selectedRelationId: null,
+      preExploreState: state.isExploreMode
+        ? state.preExploreState
+        : {
+            selectedLocationId: state.selectedLocationId,
+            selectedRelationId: state.selectedRelationId,
+            filters: {
+              searchText: state.filters.searchText,
+              frequency: state.filters.frequency,
+              selectedTags: [...state.filters.selectedTags],
+            },
+          },
+    });
+  },
+
+  exitExploreMode: () => {
+    const state = get();
+    const restore = state.preExploreState;
+
+    set({
+      isExploreMode: false,
+      exploreCenterId: null,
+      exploreDepth: 1,
+      visibleRelationTypes: [...RELATION_TYPES],
+      preExploreState: null,
+      selectedLocationId: restore ? restore.selectedLocationId : state.selectedLocationId,
+      selectedRelationId: restore ? restore.selectedRelationId : state.selectedRelationId,
+      filters: restore
+        ? {
+            searchText: restore.filters.searchText,
+            frequency: restore.filters.frequency,
+            selectedTags: [...restore.filters.selectedTags],
+          }
+        : state.filters,
+    });
+  },
+
+  setExploreDepth: (depth) => {
+    set({ exploreDepth: depth });
+  },
+
+  toggleRelationTypeVisibility: (type) => {
+    set((state) => {
+      const visibleRelationTypes = state.visibleRelationTypes.includes(type)
+        ? state.visibleRelationTypes.filter((item) => item !== type)
+        : [...state.visibleRelationTypes, type];
+
+      return {
+        visibleRelationTypes,
+      };
+    });
+  },
+
+  setExploreCenter: (centerId) => {
+    const state = get();
+    const centerExists = state.locations.some((loc) => loc.id === centerId);
+    if (!centerExists) return;
+
+    set({
+      isExploreMode: true,
+      exploreCenterId: centerId,
+      selectedLocationId: centerId,
+      selectedRelationId: null,
+    });
+  },
+
+  getExploreLocationIds: () => {
+    const state = get();
+    const centerId = state.exploreCenterId;
+    if (!state.isExploreMode || !centerId) return new Set<string>();
+
+    const visibleTypes = new Set(state.visibleRelationTypes);
+    const ids = new Set<string>([centerId]);
+    const firstDegree = new Set<string>();
+
+    state.relations.forEach((rel) => {
+      if (!visibleTypes.has(rel.type)) return;
+      if (rel.fromId === centerId) firstDegree.add(rel.toId);
+      if (rel.toId === centerId) firstDegree.add(rel.fromId);
+    });
+
+    firstDegree.forEach((id) => ids.add(id));
+
+    if (state.exploreDepth === 2) {
+      state.relations.forEach((rel) => {
+        if (!visibleTypes.has(rel.type)) return;
+        if (firstDegree.has(rel.fromId)) ids.add(rel.toId);
+        if (firstDegree.has(rel.toId)) ids.add(rel.fromId);
+      });
+    }
+
+    return ids;
+  },
+
+  getExploreLocations: () => {
+    const ids = get().getExploreLocationIds();
+    return get().locations.filter((loc) => ids.has(loc.id));
+  },
+
+  getExploreVisibleRelations: () => {
+    const state = get();
+    const ids = state.getExploreLocationIds();
+    const visibleTypes = new Set(state.visibleRelationTypes);
+    return state.relations.filter(
+      (rel) => visibleTypes.has(rel.type) && ids.has(rel.fromId) && ids.has(rel.toId)
+    );
+  },
+
+  getExploreDistance: (locationId) => {
+    const state = get();
+    const centerId = state.exploreCenterId;
+    if (!state.isExploreMode || !centerId) return null;
+    if (locationId === centerId) return 0;
+
+    const visibleTypes = new Set(state.visibleRelationTypes);
+    const firstDegree = new Set<string>();
+
+    state.relations.forEach((rel) => {
+      if (!visibleTypes.has(rel.type)) return;
+      if (rel.fromId === centerId) firstDegree.add(rel.toId);
+      if (rel.toId === centerId) firstDegree.add(rel.fromId);
+    });
+
+    if (firstDegree.has(locationId)) return 1;
+    if (state.exploreDepth === 1) return null;
+
+    for (const rel of state.relations) {
+      if (!visibleTypes.has(rel.type)) continue;
+      if (
+        (firstDegree.has(rel.fromId) && rel.toId === locationId) ||
+        (firstDegree.has(rel.toId) && rel.fromId === locationId)
+      ) {
+        return 2;
+      }
+    }
+
+    return null;
   },
 
   importLocations: (imported, mode) => {

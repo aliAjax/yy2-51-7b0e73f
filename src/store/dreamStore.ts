@@ -41,6 +41,7 @@ interface FilterState {
   searchText: string;
   frequency: string;
   selectedTags: string[];
+  timelineEventTypes: ('create' | 'update')[];
 }
 
 interface DreamState {
@@ -78,6 +79,8 @@ interface DreamActions {
   setFrequencyFilter: (frequency: string) => void;
   toggleTagFilter: (tag: string) => void;
   clearTagFilter: () => void;
+  toggleTimelineEventType: (type: 'create' | 'update') => void;
+  clearTimelineEventTypes: () => void;
   clearFilters: () => void;
   getFilteredLocations: () => DreamLocation[];
   getAllTags: () => string[];
@@ -104,6 +107,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     searchText: '',
     frequency: '',
     selectedTags: [],
+    timelineEventTypes: [],
   },
 
   addLocation: (data) => {
@@ -302,12 +306,31 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     }));
   },
 
+  toggleTimelineEventType: (type) => {
+    set((state) => {
+      const timelineEventTypes = state.filters.timelineEventTypes.includes(type)
+        ? state.filters.timelineEventTypes.filter((item) => item !== type)
+        : [...state.filters.timelineEventTypes, type];
+
+      return {
+        filters: { ...state.filters, timelineEventTypes },
+      };
+    });
+  },
+
+  clearTimelineEventTypes: () => {
+    set((state) => ({
+      filters: { ...state.filters, timelineEventTypes: [] },
+    }));
+  },
+
   clearFilters: () => {
     set({
       filters: {
         searchText: '',
         frequency: '',
         selectedTags: [],
+        timelineEventTypes: [],
       },
     });
   },

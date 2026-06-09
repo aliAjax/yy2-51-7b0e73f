@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Plus, Calendar, Moon, Sparkles, Edit3, MapPin } from 'lucide-react';
-import { useDreamStore, initializeDreamStore } from '@/store/dreamStore';
+import { ArrowLeft, Clock, Plus, Calendar, Moon, Sparkles, Edit3, MapPin, SearchX, Tag, X } from 'lucide-react';
+import { useDreamStore, initializeDreamStore, filterLocations } from '@/store/dreamStore';
 import { hexToRgba } from '@/utils/storage';
 import { LocationForm } from '@/components/LocationForm/LocationForm';
+import { FREQUENCY_OPTIONS } from '@/types';
 
 interface TimelineEvent {
   id: string;
@@ -20,17 +21,37 @@ interface TimelineEvent {
 export default function TimelinePage() {
   const navigate = useNavigate();
   const locations = useDreamStore((state) => state.locations);
+  const filters = useDreamStore((state) => state.filters);
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const openForm = useDreamStore((state) => state.openForm);
+  const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
+  const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
+  const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
+  const toggleTimelineEventType = useDreamStore((state) => state.toggleTimelineEventType);
+  const clearTimelineEventTypes = useDreamStore((state) => state.clearTimelineEventTypes);
+  const clearFilters = useDreamStore((state) => state.clearFilters);
 
   useEffect(() => {
     initializeDreamStore();
   }, []);
 
+  const filteredLocations = useMemo(
+    () => filterLocations(locations, { ...filters, searchText: '' }),
+    [locations, filters]
+  );
+
+  const allTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    locations.forEach((location) => {
+      location.tags.forEach((tag) => tagsSet.add(tag));
+    });
+    return Array.from(tagsSet).sort();
+  }, [locations]);
+
   const timelineEvents = useMemo(() => {
     const events: TimelineEvent[] = [];
 
-    locations.forEach((location) => {
+    filteredLocations.forEach((location) => {
       events.push({
         id: `${location.id}-create`,
         locationId: location.id,
@@ -59,12 +80,20 @@ export default function TimelinePage() {
     });
 
     return events.sort((a, b) => b.timestamp - a.timestamp);
-  }, [locations]);
+  }, [filteredLocations]);
+
+  const filteredTimelineEvents = useMemo(() => {
+    if (filters.timelineEventTypes.length === 0) {
+      return timelineEvents;
+    }
+
+    return timelineEvents.filter((event) => filters.timelineEventTypes.includes(event.type));
+  }, [filters.timelineEventTypes, timelineEvents]);
 
   const groupedByMonth = useMemo(() => {
     const groups = new Map<string, TimelineEvent[]>();
 
-    timelineEvents.forEach((event) => {
+    filteredTimelineEvents.forEach((event) => {
       const date = new Date(event.date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       if (!groups.has(key)) {
@@ -74,7 +103,14 @@ export default function TimelinePage() {
     });
 
     return Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [timelineEvents]);
+  }, [filteredTimelineEvents]);
+
+  const hasActiveFilters = !!filters.frequency || filters.selectedTags.length > 0 || filters.timelineEventTypes.length > 0;
+  const hasResults = filteredTimelineEvents.length > 0;
+  const eventTypeOptions: Array<{ type: 'create' | 'update'; label: string }> = [
+    { type: 'create', label: '创建' },
+    { type: 'update', label: '更新' },
+  ];
 
   const formatMonth = (key: string) => {
     const [year, month] = key.split('-');
@@ -147,10 +183,10 @@ export default function TimelinePage() {
             <div className="flex items-center gap-3">
               <div className="hidden md:block text-right">
                 <p className="text-lg font-serif text-white">
-                  {timelineEvents.length}
+                  {filteredTimelineEvents.length}
                 </p>
                 <p className="text-xs text-purple-300/50">
-                  时间轴事件
+                  {hasActiveFilters ? `筛选结果 / ${timelineEvents.length}` : '时间轴事件'}
                 </p>
               </div>
 
@@ -168,6 +204,139 @@ export default function TimelinePage() {
               </button>
             </div>
           </div>
+
+          {locations.length > 0 && (
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr]">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-purple-300/60">出现频率</label>
+                  {filters.frequency && (
+                    <button
+                      onClick={() => setFrequencyFilter('')}
+                      className="text-xs text-purple-300/50 hover:text-purple-200 transition-colors"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:grid-cols-2">
+                  <button
+                    onClick={() => setFrequencyFilter('')}
+                    className={`py-1.5 px-2 rounded-md text-xs transition-all ${
+                      !filters.frequency
+                        ? 'text-white bg-purple-500/30 border border-purple-400/50'
+                        : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                    }`}
+                  >
+                    全部
+                  </button>
+                  {FREQUENCY_OPTIONS.map((frequency) => (
+                    <button
+                      key={frequency}
+                      onClick={() => setFrequencyFilter(frequency)}
+                      className={`py-1.5 px-2 rounded-md text-xs transition-all ${
+                        filters.frequency === frequency
+                          ? 'text-white bg-purple-500/30 border border-purple-400/50'
+                          : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                      }`}
+                    >
+                      {frequency}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-purple-300/60 flex items-center gap-1">
+                    <Tag size={12} />
+                    标签筛选
+                  </label>
+                  {filters.selectedTags.length > 0 && (
+                    <button
+                      onClick={clearTagFilter}
+                      className="text-xs text-purple-300/50 hover:text-purple-200 transition-colors"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                {allTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {allTags.map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => toggleTagFilter(tag)}
+                        className={`px-2 py-1 rounded-full text-xs transition-all ${
+                          filters.selectedTags.includes(tag)
+                            ? 'text-white bg-purple-500/40 border border-purple-400/60'
+                            : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-purple-300/40">暂无可筛选标签</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-purple-300/60">事件类型</label>
+                  {filters.timelineEventTypes.length > 0 && (
+                    <button
+                      onClick={clearTimelineEventTypes}
+                      className="text-xs text-purple-300/50 hover:text-purple-200 transition-colors"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={clearTimelineEventTypes}
+                    className={`py-1.5 px-2 rounded-md text-xs transition-all ${
+                      filters.timelineEventTypes.length === 0
+                        ? 'text-white bg-purple-500/30 border border-purple-400/50'
+                        : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                    }`}
+                  >
+                    全部
+                  </button>
+                  {eventTypeOptions.map((option) => (
+                    <button
+                      key={option.type}
+                      onClick={() => toggleTimelineEventType(option.type)}
+                      className={`py-1.5 px-2 rounded-md text-xs transition-all ${
+                        filters.timelineEventTypes.includes(option.type)
+                          ? 'text-white bg-purple-500/30 border border-purple-400/50'
+                          : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {hasActiveFilters && (
+                <div className="lg:col-span-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-purple-300/50">
+                    显示 {filteredTimelineEvents.length} / {timelineEvents.length} 条事件
+                  </p>
+                  <button
+                    onClick={clearFilters}
+                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs text-purple-300/70 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10 transition-all"
+                  >
+                    <X size={12} />
+                    清空所有筛选
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -190,6 +359,22 @@ export default function TimelinePage() {
                 <Plus size={18} />
                 记录第一个梦境
               </button>
+            </div>
+          ) : !hasResults && hasActiveFilters ? (
+            <div className="h-full flex items-center justify-center px-4">
+              <div className="text-center text-purple-200/50 animate-fade-in">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-purple-500/10 border border-purple-400/20">
+                  <SearchX size={28} className="text-purple-300/60" />
+                </div>
+                <p className="text-lg md:text-xl font-serif italic mb-2">未找到匹配的梦境</p>
+                <p className="text-sm opacity-70 mb-4">没有符合当前筛选条件的地点</p>
+                <button
+                  onClick={clearFilters}
+                  className="px-5 py-2 rounded-lg text-sm text-purple-200/80 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10 transition-all"
+                >
+                  清空筛选条件
+                </button>
+              </div>
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 md:px-6 py-6">

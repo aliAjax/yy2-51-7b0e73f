@@ -348,9 +348,10 @@ export function DetailPanel() {
                       </div>
                       {hasDescription && (
                         <div
-                          className="pl-11 overflow-hidden transition-all duration-300 ease-in-out"
+                          className="pl-11 transition-all duration-300 ease-in-out"
                           style={{
-                            maxHeight: isExpanded ? '500px' : '3.5rem',
+                            maxHeight: isExpanded ? 'none' : '3.5rem',
+                            overflow: isExpanded ? 'visible' : 'hidden',
                           }}
                         >
                           <p

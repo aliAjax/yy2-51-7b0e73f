@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Save, Plus, Tag } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS } from '@/types';
@@ -25,6 +25,7 @@ export function LocationForm() {
   const closeForm = useDreamStore((state) => state.closeForm);
   const addLocation = useDreamStore((state) => state.addLocation);
   const updateLocation = useDreamStore((state) => state.updateLocation);
+  const getAllTags = useDreamStore((state) => state.getAllTags);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -38,8 +39,49 @@ export function LocationForm() {
 
   const [tagInput, setTagInput] = useState('');
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   const [errors, setErrors] = useState<{ name?: string }>({});
+
+  const existingTags = useMemo(() => getAllTags(), [getAllTags]);
+
+  const tagSuggestions = useMemo(() => {
+    const input = tagInput.trim().toLowerCase();
+    if (!input) {
+      return existingTags.filter(
+        (tag) => !formData.tags.some((t) => t.toLowerCase() === tag.toLowerCase())
+      );
+    }
+    return existingTags
+      .filter((tag) => {
+        const tagLower = tag.toLowerCase();
+        const alreadySelected = formData.tags.some((t) => t.toLowerCase() === tagLower);
+        return !alreadySelected && tagLower.includes(input);
+      })
+      .sort((a, b) => {
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        const aStartsWith = aLower.startsWith(input);
+        const bStartsWith = bLower.startsWith(input);
+        if (aStartsWith !== bStartsWith) return aStartsWith ? -1 : 1;
+        return aLower.localeCompare(bLower);
+      });
+  }, [tagInput, existingTags, formData.tags]);
+
+  const caseVariantWarning = useMemo(() => {
+    const input = tagInput.trim();
+    if (!input) return null;
+    const inputLower = input.toLowerCase();
+    const existingMatch = existingTags.find(
+      (tag) => tag.toLowerCase() === inputLower && tag !== input
+    );
+    if (existingMatch && !formData.tags.some((t) => t.toLowerCase() === inputLower)) {
+      return existingMatch;
+    }
+    return null;
+  }, [tagInput, existingTags, formData.tags]);
 
   useEffect(() => {
     if (editingLocation) {
@@ -64,8 +106,31 @@ export function LocationForm() {
       });
     }
     setTagInput('');
+    setShowSuggestions(false);
+    setHighlightedIndex(-1);
     setErrors({});
   }, [editingLocation, isFormOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(e.target as Node) &&
+        tagInputRef.current &&
+        !tagInputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    if (showSuggestions) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSuggestions]);
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [tagInput]);
 
   if (!isFormOpen) return null;
 
@@ -76,12 +141,34 @@ export function LocationForm() {
     }
   };
 
-  const addTag = () => {
-    const trimmedTag = tagInput.trim();
-    if (trimmedTag && !formData.tags.includes(trimmedTag)) {
-      setFormData((prev) => ({ ...prev, tags: [...prev.tags, trimmedTag] }));
+  const addTagFromSuggestion = (tag: string) => {
+    if (!formData.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) {
+      setFormData((prev) => ({ ...prev, tags: [...prev.tags, tag] }));
     }
     setTagInput('');
+    setHighlightedIndex(-1);
+    setShowSuggestions(true);
+    tagInputRef.current?.focus();
+  };
+
+  const addTag = () => {
+    const trimmedTag = tagInput.trim();
+    if (!trimmedTag) {
+      setShowSuggestions(false);
+      return;
+    }
+
+    const inputLower = trimmedTag.toLowerCase();
+    const exactExisting = existingTags.find((tag) => tag.toLowerCase() === inputLower);
+
+    const finalTag = exactExisting || trimmedTag;
+
+    if (!formData.tags.some((t) => t.toLowerCase() === inputLower)) {
+      setFormData((prev) => ({ ...prev, tags: [...prev.tags, finalTag] }));
+    }
+    setTagInput('');
+    setHighlightedIndex(-1);
+    setShowSuggestions(true);
     tagInputRef.current?.focus();
   };
 
@@ -93,12 +180,54 @@ export function LocationForm() {
   };
 
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'ArrowDown') {
       e.preventDefault();
-      addTag();
+      if (tagSuggestions.length > 0) {
+        setShowSuggestions(true);
+        setHighlightedIndex((prev) =>
+          prev < tagSuggestions.length - 1 ? prev + 1 : 0
+        );
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (tagSuggestions.length > 0) {
+        setShowSuggestions(true);
+        setHighlightedIndex((prev) =>
+          prev > 0 ? prev - 1 : tagSuggestions.length - 1
+        );
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (showSuggestions && highlightedIndex >= 0 && tagSuggestions[highlightedIndex]) {
+        addTagFromSuggestion(tagSuggestions[highlightedIndex]);
+      } else {
+        addTag();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowSuggestions(false);
+      setHighlightedIndex(-1);
     } else if (e.key === 'Backspace' && !tagInput && formData.tags.length > 0) {
       removeTag(formData.tags[formData.tags.length - 1]);
     }
+  };
+
+  const highlightTagMatch = (tag: string, input: string) => {
+    const trimmedInput = input.trim();
+    if (!trimmedInput) return tag;
+    const lowerTag = tag.toLowerCase();
+    const lowerInput = trimmedInput.toLowerCase();
+    const index = lowerTag.indexOf(lowerInput);
+    if (index === -1) return tag;
+    return (
+      <>
+        {tag.slice(0, index)}
+        <span className="text-purple-300 font-medium">
+          {tag.slice(index, index + trimmedInput.length)}
+        </span>
+        {tag.slice(index + trimmedInput.length)}
+      </>
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -301,27 +430,99 @@ export function LocationForm() {
                 </span>
               ))}
             </div>
-            <div className="flex gap-2">
-              <input
-                ref={tagInputRef}
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder="输入标签，按回车添加..."
-                className="flex-1 px-3 py-2 rounded-lg text-sm text-white placeholder-purple-300/30 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
-              />
-              <button
-                type="button"
-                onClick={addTag}
-                className="px-3 py-2 rounded-lg text-sm text-white bg-purple-500/30 border border-purple-400/50 hover:bg-purple-500/50 transition-all flex items-center gap-1"
-              >
-                <Plus size={16} />
-                添加
-              </button>
+            <div className="relative">
+              <div className="flex gap-2">
+                <input
+                  ref={tagInputRef}
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onKeyDown={handleTagKeyDown}
+                  placeholder="输入标签，按回车添加..."
+                  className="flex-1 px-3 py-2 rounded-lg text-sm text-white placeholder-purple-300/30 bg-white/5 border border-purple-300/20 focus:border-purple-500/50 focus:bg-white/10 focus:outline-none transition-all"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={addTag}
+                  className="px-3 py-2 rounded-lg text-sm text-white bg-purple-500/30 border border-purple-400/50 hover:bg-purple-500/50 transition-all flex items-center gap-1"
+                >
+                  <Plus size={16} />
+                  添加
+                </button>
+              </div>
+
+              {showSuggestions && (tagSuggestions.length > 0 || caseVariantWarning) && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-10 left-0 right-0 top-full mt-1 max-h-48 overflow-y-auto rounded-lg border border-purple-300/20"
+                  style={{
+                    background: 'linear-gradient(145deg, rgba(30, 30, 63, 0.98) 0%, rgba(15, 15, 42, 0.99) 100%)',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 30px rgba(100, 50, 150, 0.15)',
+                  }}
+                >
+                  {caseVariantWarning && (
+                    <div
+                      className="px-3 py-2 border-b border-purple-300/10"
+                    >
+                      <div className="text-xs text-amber-300/80 mb-1">
+                        检测到相似标签，建议使用已有标签：
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addTagFromSuggestion(caseVariantWarning)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white hover:scale-105 transition-transform"
+                        style={{
+                          backgroundColor: hexToRgba('#f39c12', 0.25),
+                          border: `1px solid ${hexToRgba('#f39c12', 0.5)}`,
+                        }}
+                      >
+                        {caseVariantWarning}
+                      </button>
+                    </div>
+                  )}
+
+                  {tagSuggestions.length > 0 && (
+                    <div className="py-1">
+                      {!caseVariantWarning && (
+                        <div className="px-3 py-1 text-xs text-purple-300/50">
+                          {tagInput.trim() ? '匹配的标签建议' : '已有标签'}
+                        </div>
+                      )}
+                      {tagSuggestions.map((tag, index) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => addTagFromSuggestion(tag)}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${
+                            index === highlightedIndex
+                              ? 'bg-purple-500/20 text-white'
+                              : 'text-purple-200/70 hover:bg-white/5 hover:text-purple-100'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Tag size={12} className="text-purple-400/60" />
+                            {highlightTagMatch(tag, tagInput)}
+                          </span>
+                          {index === highlightedIndex && (
+                            <span className="text-xs text-purple-300/50">
+                              Enter 添加
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <p className="text-xs text-purple-300/40">
-              用标签分类你的梦境地点，方便以后查找
+              输入时会显示已有标签建议，避免重复和大小写不一致。↑↓ 选择，Enter 添加
             </p>
           </div>
 

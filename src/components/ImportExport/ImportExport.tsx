@@ -65,7 +65,7 @@ export function ImportExport() {
   const dropZoneRef = useRef<HTMLLabelElement>(null);
 
   const hasActiveFilters = useMemo(() => {
-    return !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
+    return !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
   }, [filters]);
 
   const filteredCount = useMemo(() => {

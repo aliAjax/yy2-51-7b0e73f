@@ -4,6 +4,7 @@ import { DreamNode } from './DreamNode';
 import { RelationLines } from './RelationLines';
 import { MapControls } from './MapControls';
 import { DreamPlayback, PlaybackSortMode } from './DreamPlayback';
+import { ExploreControls } from '@/components/ExploreControls/ExploreControls';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 import { clusterLocations, arrangeLocationsInCluster } from '@/utils/clustering';
 import { hexToRgba } from '@/utils/storage';
@@ -81,6 +82,7 @@ export function DreamMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const transformLayerRef = useRef<HTMLDivElement>(null);
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
   const filters = useDreamStore((state) => state.filters);
   const clearFilters = useDreamStore((state) => state.clearFilters);
   const selectLocation = useDreamStore((state) => state.selectLocation);
@@ -90,6 +92,16 @@ export function DreamMap() {
   const viewMode = useDreamStore((state) => state.viewMode);
   const setViewMode = useDreamStore((state) => state.setViewMode);
   const setClusterPositions = useDreamStore((state) => state.setClusterPositions);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const preExploreState = useDreamStore((state) => state.preExploreState);
+  const getExploreLocations = useDreamStore((state) => state.getExploreLocations);
+  const enterExploreMode = useDreamStore((state) => state.enterExploreMode);
+  const exitExploreMode = useDreamStore((state) => state.exitExploreMode);
+
+  const prevIsExploreModeRef = useRef(false);
+  const exploreCenterRef = useRef<string | null>(null);
+  const preExploreViewTransformRef = useRef<ViewTransform | null>(null);
 
   const [viewTransform, setViewTransform] = useState<ViewTransform>({
     scale: 1,
@@ -129,10 +141,12 @@ export function DreamMap() {
     viewTransform: ViewTransform;
   } | null>(null);
 
-  const filteredLocations = useMemo(
-    () => filterLocations(locations, filters),
-    [locations, filters]
-  );
+  const filteredLocations = useMemo(() => {
+    if (isExploreMode) {
+      return getExploreLocations();
+    }
+    return filterLocations(locations, relations, filters);
+  }, [locations, relations, filters, isExploreMode, getExploreLocations]);
 
   const clusters = useMemo(
     () => clusterLocations(filteredLocations),
@@ -155,7 +169,7 @@ export function DreamMap() {
     });
   }, [viewMode, filteredLocations, clusterPositions]);
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
   const hasResults = filteredLocations.length > 0;
 
   useEffect(() => {
@@ -311,6 +325,56 @@ export function DreamMap() {
     selectLocation(location.id);
     selectRelation(null);
   }, [applyViewTransform, selectLocation, selectRelation]);
+
+  useEffect(() => {
+    if (!prevIsExploreModeRef.current && isExploreMode) {
+      preExploreViewTransformRef.current = { ...viewTransform };
+      if (exploreCenterId) {
+        const centerLocation = locations.find((l) => l.id === exploreCenterId);
+        if (centerLocation) {
+          requestAnimationFrame(() => {
+            focusOnLocation(centerLocation);
+          });
+        }
+      }
+    }
+
+    if (prevIsExploreModeRef.current && !isExploreMode) {
+      if (preExploreViewTransformRef.current) {
+        const vt = preExploreViewTransformRef.current;
+        requestAnimationFrame(() => {
+          applyViewTransform(vt.scale, vt.offsetX, vt.offsetY, true);
+        });
+        preExploreViewTransformRef.current = null;
+      }
+    }
+
+    if (
+      isExploreMode &&
+      prevIsExploreModeRef.current &&
+      exploreCenterId !== exploreCenterRef.current &&
+      exploreCenterId
+    ) {
+      const centerLocation = locations.find((l) => l.id === exploreCenterId);
+      if (centerLocation) {
+        requestAnimationFrame(() => {
+          focusOnLocation(centerLocation);
+        });
+      }
+    }
+
+    prevIsExploreModeRef.current = isExploreMode;
+    exploreCenterRef.current = exploreCenterId;
+  }, [isExploreMode, exploreCenterId, locations, viewTransform, focusOnLocation, applyViewTransform]);
+
+  useEffect(() => {
+    if (!isExploreMode) return;
+    if (!selectedLocationId) return;
+    if (selectedLocationId === exploreCenterId) return;
+    const visibleIds = useDreamStore.getState().getExploreVisibleLocationIds();
+    if (!visibleIds.has(selectedLocationId)) return;
+    enterExploreMode(selectedLocationId);
+  }, [selectedLocationId, isExploreMode, exploreCenterId, enterExploreMode]);
 
   const startPlayback = useCallback(() => {
     if (filteredLocations.length === 0) return;
@@ -1128,6 +1192,8 @@ export function DreamMap() {
         </div>
       )}
 
+      {isExploreMode && <ExploreControls />}
+
       {!isPlaybackMode && (
         <MapControls
           scale={viewTransform.scale}
@@ -1141,7 +1207,7 @@ export function DreamMap() {
           onReset={handleReset}
           onFitAll={handleFitAll}
           onStartPlayback={startPlayback}
-          canPlayback={hasResults && !isPlaybackMode}
+          canPlayback={hasResults && !isPlaybackMode && !isExploreMode}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
         />

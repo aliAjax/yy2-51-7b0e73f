@@ -1,16 +1,20 @@
 import { useState, useMemo } from 'react';
-import { Search, X, Filter, ChevronDown, Tag } from 'lucide-react';
+import { Search, X, Filter, ChevronDown, Tag, Link } from 'lucide-react';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
-import { FREQUENCY_OPTIONS } from '@/types';
+import { FREQUENCY_OPTIONS, RELATION_TYPES, RELATION_TYPE_COLORS } from '@/types';
+import { hexToRgba } from '@/utils/storage';
 
 export function SearchFilter() {
   const [isExpanded, setIsExpanded] = useState(false);
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
   const filters = useDreamStore((state) => state.filters);
   const setSearchText = useDreamStore((state) => state.setSearchText);
   const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
   const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
   const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
+  const toggleRelationTypeFilter = useDreamStore((state) => state.toggleRelationTypeFilter);
+  const clearRelationTypeFilter = useDreamStore((state) => state.clearRelationTypeFilter);
   const clearFilters = useDreamStore((state) => state.clearFilters);
 
   const allTags = useMemo(() => {
@@ -22,13 +26,13 @@ export function SearchFilter() {
   }, [locations]);
 
   const filteredLocations = useMemo(
-    () => filterLocations(locations, filters),
-    [locations, filters]
+    () => filterLocations(locations, relations, filters),
+    [locations, relations, filters]
   );
 
   const filteredCount = filteredLocations.length;
   const totalCount = locations.length;
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
 
   return (
     <div className="border-b border-purple-300/10">
@@ -140,6 +144,54 @@ export function SearchFilter() {
                 </div>
               </div>
             )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-purple-300/60 flex items-center gap-1">
+                  <Link size={12} />
+                  关系类型
+                </label>
+                {filters.selectedRelationTypes.length > 0 && (
+                  <button
+                    onClick={clearRelationTypeFilter}
+                    className="text-xs text-purple-300/50 hover:text-purple-200 transition-colors"
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {RELATION_TYPES.map((type) => {
+                  const isSelected = filters.selectedRelationTypes.includes(type);
+                  const color = RELATION_TYPE_COLORS[type];
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => toggleRelationTypeFilter(type)}
+                      className={`flex items-center gap-1.5 py-1.5 px-2 rounded-md text-xs transition-all ${
+                        isSelected
+                          ? 'text-white border'
+                          : 'text-purple-300/60 bg-white/5 border border-purple-300/20 hover:text-purple-200 hover:bg-white/10'
+                      }`}
+                      style={
+                        isSelected
+                          ? {
+                              backgroundColor: hexToRgba(color, 0.25),
+                              borderColor: hexToRgba(color, 0.5),
+                            }
+                          : undefined
+                      }
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      {type}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {hasActiveFilters && (
               <button

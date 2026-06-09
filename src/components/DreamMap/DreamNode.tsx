@@ -27,12 +27,16 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
   const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
   const relations = useDreamStore((state) => state.relations);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
 
   const isSelected = selectedLocationId === location.id;
+  const isExploreCenter = isExploreMode && exploreCenterId === location.id;
 
   const isRelated = useMemo(() => {
-    if (!selectedLocationId && !selectedRelationId) return false;
+    if (!selectedLocationId && !selectedRelationId && !isExploreMode) return false;
     if (selectedLocationId === location.id) return false;
+    if (isExploreCenter) return false;
 
     if (selectedLocationId) {
       return relations.some(
@@ -47,8 +51,16 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       return rel && (rel.fromId === location.id || rel.toId === location.id);
     }
 
+    if (isExploreMode && exploreCenterId) {
+      return relations.some(
+        (rel) =>
+          (rel.fromId === exploreCenterId && rel.toId === location.id) ||
+          (rel.toId === exploreCenterId && rel.fromId === location.id)
+      );
+    }
+
     return false;
-  }, [selectedLocationId, selectedRelationId, relations, location.id]);
+  }, [selectedLocationId, selectedRelationId, relations, location.id, isExploreMode, exploreCenterId, isExploreCenter]);
 
   const dispatchNodeDragEnd = useCallback(() => {
     const container = mapContainerRef.current;
@@ -176,8 +188,8 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
 
   const textColor = getContrastColor(location.emotionColor);
 
-  const hasSelection = selectedLocationId || selectedRelationId;
-  const isDimmed = hasSelection && !isSelected && !isRelated;
+  const hasSelection = selectedLocationId || selectedRelationId || isExploreMode;
+  const isDimmed = hasSelection && !isSelected && !isRelated && !isExploreCenter;
 
   return (
     <div
@@ -188,12 +200,12 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
             ? 'cursor-grabbing z-50 scale-110'
             : 'cursor-grab z-10 hover:scale-105'
           : 'cursor-pointer z-10 hover:scale-105'
-      } ${isSelected ? 'z-20 scale-105' : ''} ${isRelated ? 'z-15 scale-102' : ''}`}
+      } ${isSelected || isExploreCenter ? 'z-20 scale-105' : ''} ${isRelated ? 'z-15 scale-102' : ''}`}
       style={{
         left: `${location.positionX}%`,
         top: `${location.positionY}%`,
         transform: 'translate(-50%, -50%)',
-        animation: isSelected || isDragging ? 'none' : 'float 6s ease-in-out infinite',
+        animation: isSelected || isExploreCenter || isDragging ? 'none' : 'float 6s ease-in-out infinite',
         animationDelay: `${parseInt(location.id.slice(-2), 36) % 10 * 0.3}s`,
         opacity: isDimmed ? 0.3 : 1,
       }}
@@ -204,17 +216,29 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       <div
         className="relative group"
         style={{
-          filter: `drop-shadow(0 0 ${isRelated || isSelected ? '25px' : '20px'} ${hexToRgba(location.emotionColor, isRelated || isSelected ? 0.8 : 0.6)}) drop-shadow(0 0 40px ${hexToRgba(location.emotionColor, isRelated || isSelected ? 0.5 : 0.3)})`,
+          filter: `drop-shadow(0 0 ${isRelated || isSelected || isExploreCenter ? '25px' : '20px'} ${hexToRgba(location.emotionColor, isRelated || isSelected || isExploreCenter ? 0.8 : 0.6)}) drop-shadow(0 0 40px ${hexToRgba(location.emotionColor, isRelated || isSelected || isExploreCenter ? 0.5 : 0.3)})`,
         }}
       >
+        {isExploreCenter && (
+          <div
+            className="absolute inset-0 rounded-full animate-ping"
+            style={{
+              backgroundColor: location.emotionColor,
+              opacity: 0.3,
+              animationDuration: '2s',
+            }}
+          />
+        )}
         <div
           className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-xs md:text-sm font-medium transition-all duration-300 ${
-            isSelected ? 'ring-4 ring-white/30' : ''
+            isSelected || isExploreCenter ? 'ring-4 ring-white/30' : ''
           } ${isRelated ? 'ring-2 ring-white/20' : ''}`}
           style={{
             backgroundColor: location.emotionColor,
             color: textColor,
-            boxShadow: `inset 0 2px 10px ${hexToRgba('#ffffff', 0.3)}, inset 0 -2px 10px ${hexToRgba('#000000', 0.2)}`,
+            boxShadow: isExploreCenter
+              ? `0 0 0 3px ${hexToRgba('#ffffff', 0.2)}, inset 0 2px 10px ${hexToRgba('#ffffff', 0.3)}, inset 0 -2px 10px ${hexToRgba('#000000', 0.2)}`
+              : `inset 0 2px 10px ${hexToRgba('#ffffff', 0.3)}, inset 0 -2px 10px ${hexToRgba('#000000', 0.2)}`,
           }}
         >
           <span className="text-center leading-tight px-1 font-serif">

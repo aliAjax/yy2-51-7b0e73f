@@ -28,6 +28,7 @@ export default function TimelinePage() {
   const navigate = useNavigate();
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
   const filters = useDreamStore((state) => state.filters);
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const openForm = useDreamStore((state) => state.openForm);
@@ -52,8 +53,8 @@ export default function TimelinePage() {
   }, [locations]);
 
   const filteredLocations = useMemo(
-    () => filterLocations(locations, filters),
-    [locations, filters]
+    () => filterLocations(locations, relations, filters),
+    [locations, relations, filters]
   );
 
   const timelineEvents = useMemo(() => {
@@ -122,7 +123,7 @@ export default function TimelinePage() {
     return count;
   }, [filteredLocations]);
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.timelineEventTypes.length > 0;
+  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0 || filters.timelineEventTypes.length > 0;
 
   const formatMonth = (key: string) => {
     const [year, month] = key.split('-');

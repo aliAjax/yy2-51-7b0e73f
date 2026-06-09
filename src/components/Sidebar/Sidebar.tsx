@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
-import { BookOpen, Plus, ChevronLeft, ChevronRight, SearchX } from 'lucide-react';
+import { BookOpen, Plus, ChevronLeft, ChevronRight, SearchX, Network } from 'lucide-react';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
 import { hexToRgba } from '@/utils/storage';
 import { SearchFilter } from '@/components/SearchFilter/SearchFilter';
+import type { DreamLocation } from '@/types';
 
 export function Sidebar() {
   const locations = useDreamStore((state) => state.locations);
+  const relations = useDreamStore((state) => state.relations);
   const filters = useDreamStore((state) => state.filters);
   const clearFilters = useDreamStore((state) => state.clearFilters);
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
@@ -13,13 +15,81 @@ export function Sidebar() {
   const openForm = useDreamStore((state) => state.openForm);
   const isSidebarOpen = useDreamStore((state) => state.isSidebarOpen);
   const toggleSidebar = useDreamStore((state) => state.toggleSidebar);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const exploreDepth = useDreamStore((state) => state.exploreDepth);
+  const visibleRelationTypes = useDreamStore((state) => state.visibleRelationTypes);
+  const getExploreLocations = useDreamStore((state) => state.getExploreLocations);
 
-  const filteredLocations = useMemo(
-    () => filterLocations(locations, filters),
-    [locations, filters]
+  const filteredLocations = useMemo(() => {
+    if (isExploreMode) {
+      return getExploreLocations();
+    }
+    return filterLocations(locations, relations, filters);
+  }, [locations, relations, filters, isExploreMode, getExploreLocations]);
+
+  const centerLocation = useMemo(
+    () => locations.find((l) => l.id === exploreCenterId),
+    [locations, exploreCenterId]
   );
 
-  const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
+  const relationLevelMap = useMemo(() => {
+    const map = new Map<string, 'center' | 'first' | 'second'>();
+    if (!isExploreMode || !exploreCenterId) return map;
+
+    map.set(exploreCenterId, 'center');
+    const firstDegreeIds = new Set<string>();
+
+    relations.forEach((rel) => {
+      if (!visibleRelationTypes.includes(rel.type)) return;
+      if (rel.fromId === exploreCenterId) firstDegreeIds.add(rel.toId);
+      if (rel.toId === exploreCenterId) firstDegreeIds.add(rel.fromId);
+    });
+
+    firstDegreeIds.forEach((id) => {
+      if (!map.has(id)) map.set(id, 'first');
+    });
+
+    if (exploreDepth >= 2) {
+      relations.forEach((rel) => {
+        if (!visibleRelationTypes.includes(rel.type)) return;
+        if (firstDegreeIds.has(rel.fromId) && !map.has(rel.toId)) {
+          map.set(rel.toId, 'second');
+        }
+        if (firstDegreeIds.has(rel.toId) && !map.has(rel.fromId)) {
+          map.set(rel.fromId, 'second');
+        }
+      });
+    }
+
+    return map;
+  }, [isExploreMode, exploreCenterId, relations, visibleRelationTypes, exploreDepth]);
+
+  const getRelationLevelInfo = (loc: DreamLocation) => {
+    const level = relationLevelMap.get(loc.id);
+    if (level === 'center') {
+      return { label: '中心', color: '#3498db', bg: 'rgba(52, 152, 219, 0.2)', border: 'rgba(52, 152, 219, 0.5)' };
+    }
+    if (level === 'first') {
+      return { label: '一度关联', color: '#9b59b6', bg: 'rgba(155, 89, 182, 0.15)', border: 'rgba(155, 89, 182, 0.4)' };
+    }
+    if (level === 'second') {
+      return { label: '二度关联', color: '#7f8c8d', bg: 'rgba(127, 140, 141, 0.12)', border: 'rgba(127, 140, 141, 0.35)' };
+    }
+    return null;
+  };
+
+  const sortedLocations = useMemo(() => {
+    if (!isExploreMode) return filteredLocations;
+    return [...filteredLocations].sort((a, b) => {
+      const levelOrder: Record<string, number> = { center: 0, first: 1, second: 2 };
+      const la = relationLevelMap.get(a.id) || 'second';
+      const lb = relationLevelMap.get(b.id) || 'second';
+      return levelOrder[la] - levelOrder[lb];
+    });
+  }, [filteredLocations, isExploreMode, relationLevelMap]);
+
+  const hasActiveFilters = isExploreMode || !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0 || filters.selectedRelationTypes.length > 0;
   const hasResults = filteredLocations.length > 0;
 
   return (
@@ -47,16 +117,30 @@ export function Sidebar() {
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(155, 89, 182, 0.3) 0%, rgba(100, 50, 150, 0.3) 100%)',
-                  border: '1px solid rgba(155, 89, 182, 0.3)',
+                  background: isExploreMode
+                    ? 'linear-gradient(135deg, rgba(52, 152, 219, 0.3) 0%, rgba(155, 89, 182, 0.3) 100%)'
+                    : 'linear-gradient(135deg, rgba(155, 89, 182, 0.3) 0%, rgba(100, 50, 150, 0.3) 100%)',
+                  border: isExploreMode
+                    ? '1px solid rgba(52, 152, 219, 0.4)'
+                    : '1px solid rgba(155, 89, 182, 0.3)',
                 }}
               >
-                <BookOpen size={20} className="text-purple-300" />
+                {isExploreMode ? (
+                  <Network size={20} className="text-blue-300" />
+                ) : (
+                  <BookOpen size={20} className="text-purple-300" />
+                )}
               </div>
               <div>
-                <h2 className="text-sm font-serif text-white font-medium">梦境档案</h2>
+                <h2 className="text-sm font-serif text-white font-medium">
+                  {isExploreMode ? '关系探索' : '梦境档案'}
+                </h2>
                 <p className="text-xs text-purple-300/50">
-                  {hasActiveFilters
+                  {isExploreMode
+                    ? centerLocation
+                      ? `围绕「${centerLocation.name}」 · ${filteredLocations.length} 个地点`
+                      : `${filteredLocations.length} 个地点`
+                    : hasActiveFilters
                     ? `${filteredLocations.length} / ${locations.length} 个地点`
                     : `${locations.length} 个地点`}
                 </p>
@@ -101,58 +185,89 @@ export function Sidebar() {
                 </button>
               </div>
             ) : (
-              filteredLocations.map((location) => (
-                <button
-                  key={location.id}
-                  onClick={() => selectLocation(location.id)}
-                  className={`w-full p-3 rounded-lg text-left transition-all group ${
-                    selectedLocationId === location.id
-                      ? 'bg-white/10'
-                      : 'hover:bg-white/5'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0 mt-1 transition-transform group-hover:scale-125"
-                      style={{
-                        backgroundColor: location.emotionColor,
-                        boxShadow: `0 0 8px ${hexToRgba(location.emotionColor, 0.6)}`,
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={`text-sm truncate ${
-                          selectedLocationId === location.id
-                            ? 'text-white'
-                            : 'text-purple-100/80'
-                        }`}
-                      >
-                        {location.name}
-                      </p>
-                      <p className="text-xs text-purple-300/40 truncate">
-                        {location.frequency}
-                      </p>
-                      {location.tags && location.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {location.tags.slice(0, 3).map((tag) => (
+              sortedLocations.map((location) => {
+                const levelInfo = getRelationLevelInfo(location);
+                return (
+                  <button
+                    key={location.id}
+                    onClick={() => selectLocation(location.id)}
+                    className={`w-full p-3 rounded-lg text-left transition-all group ${
+                      selectedLocationId === location.id
+                        ? 'bg-white/10'
+                        : 'hover:bg-white/5'
+                    }`}
+                    style={
+                      levelInfo
+                        ? {
+                            backgroundColor:
+                              selectedLocationId === location.id
+                                ? undefined
+                                : levelInfo.bg,
+                            border:
+                              selectedLocationId === location.id
+                                ? undefined
+                                : `1px solid ${levelInfo.border}`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0 mt-1 transition-transform group-hover:scale-125"
+                        style={{
+                          backgroundColor: location.emotionColor,
+                          boxShadow: `0 0 8px ${hexToRgba(location.emotionColor, 0.6)}`,
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={`text-sm truncate ${
+                              selectedLocationId === location.id
+                                ? 'text-white'
+                                : 'text-purple-100/80'
+                            }`}
+                          >
+                            {location.name}
+                          </p>
+                          {levelInfo && (
                             <span
-                              key={tag}
-                              className="px-1.5 py-0.5 rounded-full text-[10px] text-purple-200/70 bg-white/5 border border-purple-300/15"
+                              className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{
+                                backgroundColor: levelInfo.bg,
+                                color: levelInfo.color,
+                                border: `1px solid ${levelInfo.border}`,
+                              }}
                             >
-                              {tag}
-                            </span>
-                          ))}
-                          {location.tags.length > 3 && (
-                            <span className="px-1.5 py-0.5 text-[10px] text-purple-300/40">
-                              +{location.tags.length - 3}
+                              {levelInfo.label}
                             </span>
                           )}
                         </div>
-                      )}
+                        <p className="text-xs text-purple-300/40 truncate">
+                          {location.frequency}
+                        </p>
+                        {location.tags && location.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {location.tags.slice(0, 3).map((tag) => (
+                              <span
+                                key={tag}
+                                className="px-1.5 py-0.5 rounded-full text-[10px] text-purple-200/70 bg-white/5 border border-purple-300/15"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {location.tags.length > 3 && (
+                              <span className="px-1.5 py-0.5 text-[10px] text-purple-300/40">
+                                +{location.tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

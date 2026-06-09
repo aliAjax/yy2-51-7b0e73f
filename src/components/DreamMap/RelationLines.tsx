@@ -15,6 +15,10 @@ export function RelationLines({ locations }: RelationLinesProps) {
   const selectRelation = useDreamStore((state) => state.selectRelation);
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const openRelationForm = useDreamStore((state) => state.openRelationForm);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const visibleRelationTypes = useDreamStore((state) => state.visibleRelationTypes);
+  const selectedRelationTypes = useDreamStore((state) => state.filters.selectedRelationTypes);
 
   const [hoveredRelationId, setHoveredRelationId] = useState<string | null>(null);
 
@@ -25,10 +29,19 @@ export function RelationLines({ locations }: RelationLinesProps) {
   }, [locations]);
 
   const visibleRelations = useMemo(() => {
-    return relations.filter(
-      (rel) => locationMap.has(rel.fromId) && locationMap.has(rel.toId)
-    );
-  }, [relations, locationMap]);
+    return relations.filter((rel) => {
+      if (!locationMap.has(rel.fromId) || !locationMap.has(rel.toId)) {
+        return false;
+      }
+      if (isExploreMode && !visibleRelationTypes.includes(rel.type)) {
+        return false;
+      }
+      if (!isExploreMode && selectedRelationTypes.length > 0 && !selectedRelationTypes.includes(rel.type)) {
+        return false;
+      }
+      return true;
+    });
+  }, [relations, locationMap, isExploreMode, visibleRelationTypes, selectedRelationTypes]);
 
   const relatedRelationIds = useMemo(() => {
     const locationId = selectedLocationId;
@@ -87,11 +100,19 @@ export function RelationLines({ locations }: RelationLinesProps) {
     if (selectedRelationId === rel.id) return true;
     if (hoveredRelationId === rel.id) return true;
     if (selectedLocationId && relatedRelationIds.has(rel.id)) return true;
+    if (isExploreMode && exploreCenterId) {
+      if (rel.fromId === exploreCenterId || rel.toId === exploreCenterId) {
+        return true;
+      }
+    }
     return false;
   };
 
   const isRelationDimmed = (rel: DreamRelation): boolean => {
     if (selectedRelationId || selectedLocationId) {
+      return !isRelationHighlighted(rel);
+    }
+    if (isExploreMode && exploreCenterId) {
       return !isRelationHighlighted(rel);
     }
     return false;

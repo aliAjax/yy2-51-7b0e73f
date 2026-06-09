@@ -1,7 +1,7 @@
-import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
+import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus, ChevronDown, ChevronUp, ArrowRight, Network } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useDreamStore } from '@/store/dreamStore';
-import { FREQUENCY_OPTIONS, RELATION_TYPE_COLORS } from '@/types';
+import { FREQUENCY_OPTIONS, RELATION_TYPE_COLORS, type RelationType } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 export function DetailPanel() {
@@ -17,11 +17,20 @@ export function DetailPanel() {
   const openForm = useDreamStore((state) => state.openForm);
   const deleteLocation = useDreamStore((state) => state.deleteLocation);
   const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
+  const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
+  const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
+  const setSearchText = useDreamStore((state) => state.setSearchText);
+  const toggleRelationTypeFilter = useDreamStore((state) => state.toggleRelationTypeFilter);
+  const clearRelationTypeFilter = useDreamStore((state) => state.clearRelationTypeFilter);
   const setSidebarOpen = useDreamStore((state) => state.setSidebarOpen);
   const openRelationForm = useDreamStore((state) => state.openRelationForm);
   const deleteRelation = useDreamStore((state) => state.deleteRelation);
   const selectRelation = useDreamStore((state) => state.selectRelation);
   const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
+  const exploreCenterId = useDreamStore((state) => state.exploreCenterId);
+  const enterExploreMode = useDreamStore((state) => state.enterExploreMode);
+  const exitExploreMode = useDreamStore((state) => state.exitExploreMode);
 
   const toggleExpandRelation = (relationId: string) => {
     setExpandedRelations((prev) => {
@@ -35,7 +44,43 @@ export function DetailPanel() {
     });
   };
 
+  const handleFrequencyClick = () => {
+    if (!location) return;
+    setFrequencyFilter(location.frequency);
+    setSidebarOpen(true);
+    selectLocation(null);
+  };
+
+  const handlePersonClick = (personName: string) => {
+    setSearchText(personName);
+    setSidebarOpen(true);
+    selectLocation(null);
+  };
+
+  const handleTagClick = (tag: string) => {
+    clearTagFilter();
+    toggleTagFilter(tag);
+    setSidebarOpen(true);
+    selectLocation(null);
+  };
+
+  const handleRelationTypeClick = (type: RelationType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    clearRelationTypeFilter();
+    toggleRelationTypeFilter(type);
+    setSidebarOpen(true);
+    selectLocation(null);
+    selectRelation(null);
+  };
+
   const location = locations.find((loc) => loc.id === selectedLocationId);
+
+  const parsedPeople = location?.relatedPeople
+    ? location.relatedPeople
+        .split(/[,，、\s]+/)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0)
+    : [];
 
   const locationRelations = selectedLocationId
     ? relations.filter(
@@ -100,6 +145,20 @@ export function DetailPanel() {
           </button>
 
           <div className="absolute bottom-4 left-6 right-6">
+            <div className="flex items-center gap-2 mb-1">
+              {isExploreMode && exploreCenterId === location.id && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-[10px] font-medium text-white flex items-center gap-1"
+                  style={{
+                    backgroundColor: 'rgba(52, 152, 219, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                  }}
+                >
+                  <Network size={10} />
+                  探索中心
+                </span>
+              )}
+            </div>
             <h2 className="text-2xl font-serif text-white font-medium tracking-wide">
               {location.name}
             </h2>
@@ -123,27 +182,28 @@ export function DetailPanel() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-purple-300/60 text-xs uppercase tracking-wider">
+          <div className="space-y-2 group cursor-pointer transition-colors hover:text-white" onClick={handleFrequencyClick}>
+            <div className="flex items-center gap-2 text-purple-300/60 text-xs uppercase tracking-wider group-hover:text-purple-200 transition-colors">
               <Clock size={12} />
               <span>出现频率</span>
+              <span className="text-[10px] text-purple-300/40 group-hover:text-purple-200/60 transition-colors">· 点击筛选</span>
             </div>
             <div className="flex gap-2">
               {FREQUENCY_OPTIONS.map((freq, index) => (
                 <div
                   key={freq}
-                  className="flex-1 h-2 rounded-full"
+                  className="flex-1 h-2 rounded-full transition-all group-hover:h-2.5"
                   style={{
                     backgroundColor:
                       index <= FREQUENCY_OPTIONS.indexOf(location.frequency as (typeof FREQUENCY_OPTIONS)[number])
                         ? location.emotionColor
                         : 'rgba(255, 255, 255, 0.1)',
-                    transition: 'background-color 0.3s',
+                    transition: 'background-color 0.3s, height 0.2s',
                   }}
                 />
               ))}
             </div>
-            <p className="text-sm text-purple-200/80">{location.frequency}</p>
+            <p className="text-sm text-purple-200/80 group-hover:text-white transition-colors">{location.frequency}</p>
           </div>
 
           <div className="space-y-2">
@@ -161,9 +221,26 @@ export function DetailPanel() {
               <Users size={12} />
               <span>相关人物</span>
             </div>
-            <p className="text-sm text-purple-100/90 leading-relaxed">
-              {location.relatedPeople || '暂无记录'}
-            </p>
+            {parsedPeople.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {parsedPeople.map((person) => (
+                  <button
+                    key={person}
+                    onClick={() => handlePersonClick(person)}
+                    className="px-2.5 py-1 rounded-full text-xs text-white transition-all hover:scale-105"
+                    style={{
+                      backgroundColor: hexToRgba('#9b59b6', 0.2),
+                      border: '1px solid rgba(155, 89, 182, 0.4)',
+                    }}
+                    title={`点击筛选包含「${person}」的梦境`}
+                  >
+                    {person}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-purple-300/40 italic">暂无记录</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -176,15 +253,13 @@ export function DetailPanel() {
                 {location.tags.map((tag) => (
                   <button
                     key={tag}
-                    onClick={() => {
-                      toggleTagFilter(tag);
-                      setSidebarOpen(true);
-                    }}
+                    onClick={() => handleTagClick(tag)}
                     className="px-2.5 py-1 rounded-full text-xs text-white transition-all hover:scale-105"
                     style={{
                       backgroundColor: hexToRgba(location.emotionColor, 0.25),
                       border: `1px solid ${hexToRgba(location.emotionColor, 0.5)}`,
                     }}
+                    title={`点击筛选包含「${tag}」标签的梦境`}
                   >
                     {tag}
                   </button>
@@ -218,13 +293,32 @@ export function DetailPanel() {
                 <span>相关梦境</span>
                 <span className="text-purple-300/40">({locationRelations.length})</span>
               </div>
-              <button
-                onClick={() => openRelationForm(undefined, location.id)}
-                className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all"
-                title="添加关系"
-              >
-                <Plus size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    if (isExploreMode && exploreCenterId === location.id) {
+                      exitExploreMode();
+                    } else {
+                      enterExploreMode(location.id);
+                    }
+                  }}
+                  className={`p-1.5 rounded-lg transition-all ${
+                    isExploreMode && exploreCenterId === location.id
+                      ? 'text-blue-300 bg-blue-500/20 border border-blue-400/30'
+                      : 'text-purple-300/60 hover:text-purple-200 hover:bg-white/10'
+                  }`}
+                  title={isExploreMode && exploreCenterId === location.id ? '退出关系探索' : '进入关系探索模式'}
+                >
+                  <Network size={14} />
+                </button>
+                <button
+                  onClick={() => openRelationForm(undefined, location.id)}
+                  className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all"
+                  title="添加关系"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
             </div>
 
             {locationRelations.length === 0 ? (
@@ -253,6 +347,7 @@ export function DetailPanel() {
                     selectLocation(relatedLoc.id);
                   };
 
+                  const isCurrentExploreCenter = isExploreMode && exploreCenterId === relatedLoc.id;
                   return (
                     <div
                       key={rel.id}
@@ -260,7 +355,14 @@ export function DetailPanel() {
                         isSelected ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'
                       }`}
                       style={{
-                        border: `1px solid ${isSelected ? hexToRgba(typeColor, 0.5) : 'rgba(150, 130, 200, 0.1)'}`,
+                        border: `1px solid ${
+                          isSelected
+                            ? hexToRgba(typeColor, 0.5)
+                            : isCurrentExploreCenter
+                            ? hexToRgba('#3498db', 0.5)
+                            : 'rgba(150, 130, 200, 0.1)'
+                        }`,
+                        backgroundColor: isCurrentExploreCenter ? hexToRgba('#3498db', 0.08) : undefined,
                       }}
                       onClick={() => {
                         selectRelation(rel.id);
@@ -287,17 +389,30 @@ export function DetailPanel() {
                           >
                             {relatedLoc.name}
                           </button>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded-full"
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <button
+                              onClick={(e) => handleRelationTypeClick(rel.type, e)}
+                              className="text-[10px] px-1.5 py-0.5 rounded-full transition-all hover:scale-110"
                               style={{
                                 backgroundColor: hexToRgba(typeColor, 0.15),
                                 color: typeColor,
                                 border: `1px solid ${hexToRgba(typeColor, 0.3)}`,
                               }}
+                              title={`点击筛选「${rel.type}」类型的关系`}
                             >
                               {rel.type}
-                            </span>
+                            </button>
+                            {isCurrentExploreCenter && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
+                                style={{
+                                  backgroundColor: 'rgba(52, 152, 219, 0.5)',
+                                  border: '1px solid rgba(52, 152, 219, 0.6)',
+                                }}
+                              >
+                                探索中心
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">

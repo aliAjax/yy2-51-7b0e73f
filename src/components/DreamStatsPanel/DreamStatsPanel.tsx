@@ -14,8 +14,8 @@ import {
   Tag,
   Link,
 } from 'lucide-react';
-import { useDreamStore } from '@/store/dreamStore';
-import { FREQUENCY_OPTIONS, RELATION_TYPES, RELATION_TYPE_COLORS } from '@/types';
+import { useDreamStore, filterLocations } from '@/store/dreamStore';
+import { FREQUENCY_OPTIONS, RELATION_TYPES, RELATION_TYPE_COLORS, type RelationType } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 interface DreamStatsPanelProps {
@@ -48,7 +48,7 @@ interface TagStat {
 }
 
 interface RelationTypeStat {
-  type: string;
+  type: RelationType;
   color: string;
   count: number;
   percentage: number;
@@ -61,8 +61,60 @@ interface TimeStats {
 }
 
 export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
-  const locations = useDreamStore((state) => state.locations);
-  const relations = useDreamStore((state) => state.relations);
+  const allLocations = useDreamStore((state) => state.locations);
+  const allRelations = useDreamStore((state) => state.relations);
+  const filters = useDreamStore((state) => state.filters);
+  const setSearchText = useDreamStore((state) => state.setSearchText);
+  const setFrequencyFilter = useDreamStore((state) => state.setFrequencyFilter);
+  const clearTagFilter = useDreamStore((state) => state.clearTagFilter);
+  const toggleTagFilter = useDreamStore((state) => state.toggleTagFilter);
+  const clearRelationTypeFilter = useDreamStore((state) => state.clearRelationTypeFilter);
+  const setRelationTypeFilter = useDreamStore((state) => state.setRelationTypeFilter);
+  const setSidebarOpen = useDreamStore((state) => state.setSidebarOpen);
+
+  const locations = useMemo(
+    () => filterLocations(allLocations, allRelations, filters),
+    [allLocations, allRelations, filters]
+  );
+
+  const relations = useMemo(() => {
+    const filteredLocationIds = new Set(locations.map((loc) => loc.id));
+    return allRelations.filter((rel) => {
+      if (!filteredLocationIds.has(rel.fromId) || !filteredLocationIds.has(rel.toId)) {
+        return false;
+      }
+      if (filters.selectedRelationTypes.length > 0 && !filters.selectedRelationTypes.includes(rel.type)) {
+        return false;
+      }
+      return true;
+    });
+  }, [allRelations, locations, filters.selectedRelationTypes]);
+
+  const handleTagClick = (tag: string) => {
+    clearTagFilter();
+    toggleTagFilter(tag);
+    setSidebarOpen(true);
+    onClose();
+  };
+
+  const handlePersonClick = (personName: string) => {
+    setSearchText(personName);
+    setSidebarOpen(true);
+    onClose();
+  };
+
+  const handleFrequencyClick = (frequency: string) => {
+    setFrequencyFilter(frequency);
+    setSidebarOpen(true);
+    onClose();
+  };
+
+  const handleRelationTypeClick = (type: RelationType) => {
+    clearRelationTypeFilter();
+    setRelationTypeFilter(type, true);
+    setSidebarOpen(true);
+    onClose();
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -392,16 +444,20 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
                 </div>
                 <div className="space-y-2">
                   {stats.frequencyStats.map((freq) => (
-                    <div key={freq.label} className="space-y-1">
+                    <div
+                      key={freq.label}
+                      className="space-y-1 cursor-pointer group"
+                      onClick={() => handleFrequencyClick(freq.label)}
+                    >
                       <div className="flex justify-between text-xs">
-                        <span className="text-purple-200/80">{freq.label}</span>
+                        <span className="text-purple-200/80 group-hover:text-purple-100 transition-colors">{freq.label}</span>
                         <span className="text-purple-300/60">
                           {freq.count} 个 ({freq.percentage.toFixed(1)}%)
                         </span>
                       </div>
                       <div className="h-2 rounded-full bg-white/5 overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-all duration-700 ease-out"
+                          className="h-full rounded-full transition-all duration-700 ease-out group-hover:brightness-125"
                           style={{
                             width: `${freq.percentage}%`,
                             background: 'linear-gradient(90deg, rgba(155, 89, 182, 0.9) 0%, rgba(100, 50, 150, 0.9) 100%)',
@@ -424,13 +480,14 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
                     {stats.personStats.map((person, index) => (
                       <div
                         key={person.name}
-                        className="p-3 rounded-lg bg-white/5 border border-purple-300/10 flex items-center justify-between hover:bg-white/10 transition-all group"
+                        className="p-3 rounded-lg bg-white/5 border border-purple-300/10 flex items-center justify-between hover:bg-white/10 transition-all group cursor-pointer"
+                        onClick={() => handlePersonClick(person.name)}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-[10px] text-purple-400/60 font-serif">
                             #{index + 1}
                           </span>
-                          <span className="text-sm text-purple-100/90 truncate">{person.name}</span>
+                          <span className="text-sm text-purple-100/90 truncate group-hover:text-white transition-colors">{person.name}</span>
                         </div>
                         <span className="text-xs text-purple-300/60 flex-shrink-0 ml-2">
                           {person.count} 次
@@ -476,16 +533,20 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
                   </div>
                   <div className="space-y-2">
                     {stats.tagStats.slice(0, 8).map((tagStat) => (
-                      <div key={tagStat.tag} className="space-y-1">
+                      <div
+                        key={tagStat.tag}
+                        className="space-y-1 cursor-pointer group"
+                        onClick={() => handleTagClick(tagStat.tag)}
+                      >
                         <div className="flex justify-between text-xs">
-                          <span className="text-purple-200/80">{tagStat.tag}</span>
+                          <span className="text-purple-200/80 group-hover:text-amber-200 transition-colors">{tagStat.tag}</span>
                           <span className="text-purple-300/60">
                             {tagStat.count} 个 ({tagStat.percentage.toFixed(1)}%)
                           </span>
                         </div>
                         <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all duration-700 ease-out"
+                            className="h-full rounded-full transition-all duration-700 ease-out group-hover:brightness-125"
                             style={{
                               width: `${tagStat.percentage}%`,
                               background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.9) 0%, rgba(217, 119, 6, 0.9) 100%)',
@@ -597,11 +658,15 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
                 {stats.totalRelations > 0 ? (
                   <div className="space-y-2">
                     {stats.relationTypeStats.map((relStat) => (
-                      <div key={relStat.type} className="space-y-1">
+                      <div
+                        key={relStat.type}
+                        className="space-y-1 cursor-pointer group"
+                        onClick={() => handleRelationTypeClick(relStat.type)}
+                      >
                         <div className="flex justify-between text-xs">
-                          <span className="text-purple-200/80 flex items-center gap-2">
+                          <span className="text-purple-200/80 flex items-center gap-2 group-hover:text-white transition-colors">
                             <span
-                              className="w-2 h-2 rounded-full"
+                              className="w-2 h-2 rounded-full group-hover:scale-125 transition-transform"
                               style={{ backgroundColor: relStat.color }}
                             />
                             {relStat.type}
@@ -612,7 +677,7 @@ export function DreamStatsPanel({ isOpen, onClose }: DreamStatsPanelProps) {
                         </div>
                         <div className="h-2 rounded-full bg-white/5 overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all duration-700 ease-out"
+                            className="h-full rounded-full transition-all duration-700 ease-out group-hover:brightness-125"
                             style={{
                               width: `${relStat.percentage}%`,
                               backgroundColor: relStat.color,

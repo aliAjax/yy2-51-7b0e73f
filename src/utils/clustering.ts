@@ -315,9 +315,7 @@ function arrangeClusters(clusters: DreamCluster[]): void {
 }
 
 export function arrangeLocationsInCluster(
-  cluster: DreamCluster,
-  containerWidth: number = 100,
-  containerHeight: number = 100
+  cluster: DreamCluster
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   const locations = cluster.locations;

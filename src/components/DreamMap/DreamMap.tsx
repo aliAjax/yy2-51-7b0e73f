@@ -4,8 +4,8 @@ import { DreamNode } from './DreamNode';
 import { RelationLines } from './RelationLines';
 import { MapControls } from './MapControls';
 import { DreamPlayback, PlaybackSortMode } from './DreamPlayback';
-import { useDreamStore, filterLocations, ViewMode } from '@/store/dreamStore';
-import { clusterLocations, arrangeLocationsInCluster, type DreamCluster } from '@/utils/clustering';
+import { useDreamStore, filterLocations } from '@/store/dreamStore';
+import { clusterLocations, arrangeLocationsInCluster } from '@/utils/clustering';
 import { hexToRgba } from '@/utils/storage';
 import type { DreamLocation } from '@/types';
 
@@ -442,7 +442,7 @@ export function DreamMap() {
     if (isPlaybackMode && playbackLocations.length > 0 && playbackIndex === 0) {
       focusOnLocation(playbackLocations[0]);
     }
-  }, [isPlaybackMode, playbackSortMode]);
+  }, [isPlaybackMode, playbackSortMode, playbackIndex, playbackLocations, focusOnLocation]);
 
   useEffect(() => {
     const container = mapRef.current;

@@ -48,6 +48,13 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
     return false;
   }, [selectedLocationId, selectedRelationId, relations, location.id]);
 
+  const dispatchNodeDragEnd = useCallback(() => {
+    const container = mapContainerRef.current;
+    if (container) {
+      container.dispatchEvent(new CustomEvent('dreamNodeDragEnd'));
+    }
+  }, [mapContainerRef]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!isDraggable) return;
     e.preventDefault();
@@ -69,6 +76,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (!isDraggable) return;
     if (e.touches.length !== 1) {
+      dispatchNodeDragEnd();
       setIsDragging(false);
       return;
     }
@@ -86,7 +94,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       });
       setIsDragging(true);
     }
-  }, [isDraggable, mapContainerRef]);
+  }, [isDraggable, mapContainerRef, dispatchNodeDragEnd]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -112,6 +120,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
 
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 1) {
+        dispatchNodeDragEnd();
         setIsDragging(false);
         return;
       }
@@ -135,10 +144,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
     };
 
     const handleEnd = () => {
-      const container = mapContainerRef.current;
-      if (container) {
-        container.dispatchEvent(new CustomEvent('dreamNodeDragEnd'));
-      }
+      dispatchNodeDragEnd();
       setIsDragging(false);
     };
 
@@ -153,7 +159,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleEnd);
     };
-  }, [isDragging, dragOffset, location.id, updatePosition, viewTransform, mapContainerRef]);
+  }, [isDragging, dragOffset, location.id, updatePosition, viewTransform, mapContainerRef, dispatchNodeDragEnd]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();

@@ -25,7 +25,7 @@ export function LocationForm() {
   const closeForm = useDreamStore((state) => state.closeForm);
   const addLocation = useDreamStore((state) => state.addLocation);
   const updateLocation = useDreamStore((state) => state.updateLocation);
-  const getAllTags = useDreamStore((state) => state.getAllTags);
+  const locations = useDreamStore((state) => state.locations);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -45,7 +45,13 @@ export function LocationForm() {
 
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  const existingTags = useMemo(() => getAllTags(), [getAllTags]);
+  const existingTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    locations.forEach((loc) => {
+      loc.tags.forEach((tag) => tagsSet.add(tag));
+    });
+    return Array.from(tagsSet).sort();
+  }, [locations]);
 
   const tagSuggestions = useMemo(() => {
     const input = tagInput.trim().toLowerCase();

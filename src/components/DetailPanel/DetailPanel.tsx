@@ -1,10 +1,16 @@
-import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus } from 'lucide-react';
+import { X, Edit3, Trash2, Calendar, Users, Sparkles, Clock, Tag, Link, Plus, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useDreamStore } from '@/store/dreamStore';
 import { FREQUENCY_OPTIONS, RELATION_TYPE_COLORS } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
 export function DetailPanel() {
+  const [expandedRelations, setExpandedRelations] = useState<Set<string>>(new Set());
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
+
+  useEffect(() => {
+    setExpandedRelations(new Set());
+  }, [selectedLocationId]);
   const locations = useDreamStore((state) => state.locations);
   const relations = useDreamStore((state) => state.relations);
   const selectLocation = useDreamStore((state) => state.selectLocation);
@@ -16,6 +22,18 @@ export function DetailPanel() {
   const deleteRelation = useDreamStore((state) => state.deleteRelation);
   const selectRelation = useDreamStore((state) => state.selectRelation);
   const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
+
+  const toggleExpandRelation = (relationId: string) => {
+    setExpandedRelations((prev) => {
+      const next = new Set(prev);
+      if (next.has(relationId)) {
+        next.delete(relationId);
+      } else {
+        next.add(relationId);
+      }
+      return next;
+    });
+  };
 
   const location = locations.find((loc) => loc.id === selectedLocationId);
 
@@ -226,6 +244,14 @@ export function DetailPanel() {
                   if (!relatedLoc) return null;
                   const typeColor = RELATION_TYPE_COLORS[rel.type];
                   const isSelected = selectedRelationId === rel.id;
+                  const isExpanded = expandedRelations.has(rel.id);
+                  const hasDescription = rel.description && rel.description.trim().length > 0;
+
+                  const handleJumpToLocation = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    selectRelation(null);
+                    selectLocation(relatedLoc.id);
+                  };
 
                   return (
                     <div
@@ -242,19 +268,25 @@ export function DetailPanel() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div
-                          className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
+                        <button
+                          onClick={handleJumpToLocation}
+                          className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center hover:scale-110 transition-transform"
                           style={{
                             backgroundColor: hexToRgba(relatedLoc.emotionColor, 0.2),
                             border: `1px solid ${hexToRgba(relatedLoc.emotionColor, 0.4)}`,
                           }}
+                          title={`跳转到 ${relatedLoc.name}`}
                         >
                           <Sparkles size={14} style={{ color: relatedLoc.emotionColor }} />
-                        </div>
+                        </button>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white font-medium truncate">
+                          <button
+                            onClick={handleJumpToLocation}
+                            className="text-sm text-white font-medium truncate hover:underline transition-colors text-left"
+                            title={`跳转到 ${relatedLoc.name}`}
+                          >
                             {relatedLoc.name}
-                          </p>
+                          </button>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span
                               className="text-[10px] px-1.5 py-0.5 rounded-full"
@@ -268,13 +300,36 @@ export function DetailPanel() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (hasDescription) {
+                                toggleExpandRelation(rel.id);
+                              }
+                            }}
+                            className={`p-1.5 rounded-lg transition-all ${
+                              hasDescription
+                                ? 'text-purple-300/60 hover:text-purple-200 hover:bg-white/10'
+                                : 'text-purple-300/20 cursor-default'
+                            } ${isExpanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                            title={hasDescription ? (isExpanded ? '收起描述' : '展开描述') : '暂无描述'}
+                          >
+                            {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          </button>
+                          <button
+                            onClick={handleJumpToLocation}
+                            className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100"
+                            title={`跳转到 ${relatedLoc.name}`}
+                          >
+                            <ArrowRight size={12} />
+                          </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               openRelationForm(rel);
                             }}
-                            className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all"
+                            className="p-1.5 rounded-lg text-purple-300/60 hover:text-purple-200 hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100"
                             title="编辑"
                           >
                             <Edit3 size={12} />
@@ -284,17 +339,37 @@ export function DetailPanel() {
                               e.stopPropagation();
                               handleDeleteRelation(rel.id);
                             }}
-                            className="p-1.5 rounded-lg text-red-400/70 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                            className="p-1.5 rounded-lg text-red-400/70 hover:text-red-300 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
                             title="删除"
                           >
                             <Trash2 size={12} />
                           </button>
                         </div>
                       </div>
-                      {rel.description && (
-                        <p className="mt-2 text-xs text-purple-200/60 line-clamp-2 pl-11">
-                          {rel.description}
-                        </p>
+                      {hasDescription && (
+                        <div
+                          className="pl-11 overflow-hidden transition-all duration-300 ease-in-out"
+                          style={{
+                            maxHeight: isExpanded ? '500px' : '3.5rem',
+                          }}
+                        >
+                          <p
+                            className={`mt-2 text-xs text-purple-200/70 leading-relaxed ${
+                              isExpanded ? '' : 'line-clamp-2'
+                            }`}
+                          >
+                            {rel.description}
+                          </p>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpandRelation(rel.id);
+                            }}
+                            className="mt-1 text-[10px] text-purple-300/60 hover:text-purple-200 transition-colors"
+                          >
+                            {isExpanded ? '收起' : '展开查看完整描述'}
+                          </button>
+                        </div>
                       )}
                     </div>
                   );

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { DreamLocation, DreamRelation, RelationType } from '@/types';
 import { saveDreamLocations, saveDreamRelations, generateId } from '@/utils/storage';
 import { runMigrations, saveDreamDataWithVersion, validateImportedData } from '@/utils/storageMigration';
+import { clusterLocations, arrangeLocationsInCluster } from '@/utils/clustering';
 
 export function filterLocations(
   locations: DreamLocation[],
@@ -53,6 +54,34 @@ interface SavedPosition {
   positionY: number;
 }
 
+interface UndoSnapshot {
+  locations: DreamLocation[];
+  relations: DreamRelation[];
+  selectedLocationId: string | null;
+  selectedRelationId: string | null;
+  savedMapPositions: Map<string, SavedPosition>;
+  viewMode: ViewMode;
+}
+
+type UndoActionType =
+  | 'addLocation'
+  | 'updateLocation'
+  | 'deleteLocation'
+  | 'updatePosition'
+  | 'addRelation'
+  | 'updateRelation'
+  | 'deleteRelation';
+
+interface UndoState {
+  canUndo: boolean;
+  actionType: UndoActionType | null;
+  actionLabel: string;
+  snapshot: UndoSnapshot | null;
+  expireAt: number;
+}
+
+const UNDO_TIMEOUT_MS = 8000;
+
 interface DreamState {
   locations: DreamLocation[];
   relations: DreamRelation[];
@@ -68,13 +97,17 @@ interface DreamState {
   viewMode: ViewMode;
   savedMapPositions: Map<string, SavedPosition>;
   clusterPositions: Map<string, { positionX: number; positionY: number }>;
+  undo: UndoState;
+  pendingDragSnapshot: UndoSnapshot | null;
 }
 
 interface DreamActions {
   addLocation: (data: Omit<DreamLocation, 'id' | 'createdAt' | 'updatedAt' | 'positionX' | 'positionY'> & { positionX?: number; positionY?: number }) => void;
   updateLocation: (id: string, data: Partial<DreamLocation>) => void;
   deleteLocation: (id: string) => void;
-  updatePosition: (id: string, x: number, y: number) => void;
+  updatePosition: (id: string, x: number, y: number, opts?: { silent?: boolean }) => void;
+  beginDragPosition: () => void;
+  endDragPosition: () => void;
   selectLocation: (id: string | null) => void;
   openForm: (location?: DreamLocation) => void;
   closeForm: () => void;
@@ -105,9 +138,52 @@ interface DreamActions {
   setClusterPosition: (id: string, x: number, y: number) => void;
   setClusterPositions: (positions: Map<string, { positionX: number; positionY: number }>) => void;
   getDisplayPosition: (id: string) => { positionX: number; positionY: number };
+  undo: () => void;
+  clearUndo: () => void;
 }
 
 export type DreamStore = DreamState & DreamActions;
+
+let undoTimer: ReturnType<typeof setTimeout> | null = null;
+
+const ACTION_LABELS: Record<UndoActionType, string> = {
+  addLocation: '新建地点',
+  updateLocation: '编辑地点',
+  deleteLocation: '删除地点',
+  updatePosition: '移动节点',
+  addRelation: '新建关系',
+  updateRelation: '编辑关系',
+  deleteRelation: '删除关系',
+};
+
+function takeSnapshot(state: DreamState): UndoSnapshot {
+  return {
+    locations: state.locations.map((l) => ({ ...l, tags: [...l.tags] })),
+    relations: state.relations.map((r) => ({ ...r })),
+    selectedLocationId: state.selectedLocationId,
+    selectedRelationId: state.selectedRelationId,
+    savedMapPositions: new Map(state.savedMapPositions),
+    viewMode: state.viewMode,
+  };
+}
+
+function scheduleUndoClear() {
+  if (undoTimer) {
+    clearTimeout(undoTimer);
+  }
+  undoTimer = setTimeout(() => {
+    useDreamStore.setState({
+      undo: {
+        canUndo: false,
+        actionType: null,
+        actionLabel: '',
+        snapshot: null,
+        expireAt: 0,
+      },
+    });
+    undoTimer = null;
+  }, UNDO_TIMEOUT_MS);
+}
 
 export const useDreamStore = create<DreamStore>((set, get) => ({
   locations: [],
@@ -129,8 +205,18 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   viewMode: 'map',
   savedMapPositions: new Map(),
   clusterPositions: new Map(),
+  undo: {
+    canUndo: false,
+    actionType: null,
+    actionLabel: '',
+    snapshot: null,
+    expireAt: 0,
+  },
+  pendingDragSnapshot: null,
 
   addLocation: (data) => {
+    const state = get();
+    const snapshot = takeSnapshot(state);
     const now = new Date().toISOString();
     const newLocation: DreamLocation = {
       id: generateId(),
@@ -146,50 +232,118 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       createdAt: now,
       updatedAt: now,
     };
-    const newLocations = [...get().locations, newLocation];
-    const currentRelations = get().relations;
-    set({ locations: newLocations });
+    const newLocations = [...state.locations, newLocation];
+    const currentRelations = state.relations;
+    set({
+      locations: newLocations,
+      undo: {
+        canUndo: true,
+        actionType: 'addLocation',
+        actionLabel: ACTION_LABELS.addLocation,
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
+    });
+    scheduleUndoClear();
     saveDreamLocations(newLocations);
     saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   updateLocation: (id, data) => {
-    const newLocations = get().locations.map((loc) =>
+    const state = get();
+    const snapshot = takeSnapshot(state);
+    const newLocations = state.locations.map((loc) =>
       loc.id === id
         ? { ...loc, ...data, updatedAt: new Date().toISOString() }
         : loc
     );
-    const currentRelations = get().relations;
-    set({ locations: newLocations });
+    const currentRelations = state.relations;
+    set({
+      locations: newLocations,
+      undo: {
+        canUndo: true,
+        actionType: 'updateLocation',
+        actionLabel: ACTION_LABELS.updateLocation,
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
+    });
+    scheduleUndoClear();
     saveDreamLocations(newLocations);
     saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   deleteLocation: (id) => {
-    const newLocations = get().locations.filter((loc) => loc.id !== id);
-    const newRelations = get().relations.filter(
+    const state = get();
+    const snapshot = takeSnapshot(state);
+    const newLocations = state.locations.filter((loc) => loc.id !== id);
+    const newRelations = state.relations.filter(
       (rel) => rel.fromId !== id && rel.toId !== id
     );
     set({
       locations: newLocations,
       relations: newRelations,
-      selectedLocationId: get().selectedLocationId === id ? null : get().selectedLocationId,
+      selectedLocationId: state.selectedLocationId === id ? null : state.selectedLocationId,
+      undo: {
+        canUndo: true,
+        actionType: 'deleteLocation',
+        actionLabel: ACTION_LABELS.deleteLocation,
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
     });
+    scheduleUndoClear();
     saveDreamLocations(newLocations);
     saveDreamRelations(newRelations);
     saveDreamDataWithVersion(newLocations, newRelations);
   },
 
-  updatePosition: (id, x, y) => {
-    const newLocations = get().locations.map((loc) =>
+  updatePosition: (id, x, y, opts) => {
+    const state = get();
+    const snapshot = !opts?.silent ? takeSnapshot(state) : null;
+    const newLocations = state.locations.map((loc) =>
       loc.id === id
         ? { ...loc, positionX: x, positionY: y, updatedAt: new Date().toISOString() }
         : loc
     );
-    const currentRelations = get().relations;
-    set({ locations: newLocations });
+    const currentRelations = state.relations;
+    if (opts?.silent) {
+      set({ locations: newLocations });
+    } else {
+      set({
+        locations: newLocations,
+        undo: {
+          canUndo: true,
+          actionType: 'updatePosition',
+          actionLabel: ACTION_LABELS.updatePosition,
+          snapshot: snapshot!,
+          expireAt: Date.now() + UNDO_TIMEOUT_MS,
+        },
+      });
+      scheduleUndoClear();
+    }
     saveDreamLocations(newLocations);
     saveDreamDataWithVersion(newLocations, currentRelations);
+  },
+
+  beginDragPosition: () => {
+    set({ pendingDragSnapshot: takeSnapshot(get()) });
+  },
+
+  endDragPosition: () => {
+    const state = get();
+    if (!state.pendingDragSnapshot) return;
+    set({
+      pendingDragSnapshot: null,
+      undo: {
+        canUndo: true,
+        actionType: 'updatePosition',
+        actionLabel: ACTION_LABELS.updatePosition,
+        snapshot: state.pendingDragSnapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
+    });
+    scheduleUndoClear();
   },
 
   selectLocation: (id) => {
@@ -211,6 +365,8 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   },
 
   addRelation: (data) => {
+    const state = get();
+    const snapshot = takeSnapshot(state);
     const now = new Date().toISOString();
     const newRelation: DreamRelation = {
       id: generateId(),
@@ -221,32 +377,64 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       createdAt: now,
       updatedAt: now,
     };
-    const newRelations = [...get().relations, newRelation];
-    const currentLocations = get().locations;
-    set({ relations: newRelations });
+    const newRelations = [...state.relations, newRelation];
+    const currentLocations = state.locations;
+    set({
+      relations: newRelations,
+      undo: {
+        canUndo: true,
+        actionType: 'addRelation',
+        actionLabel: ACTION_LABELS.addRelation,
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
+    });
+    scheduleUndoClear();
     saveDreamRelations(newRelations);
     saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   updateRelation: (id, data) => {
-    const newRelations = get().relations.map((rel) =>
+    const state = get();
+    const snapshot = takeSnapshot(state);
+    const newRelations = state.relations.map((rel) =>
       rel.id === id
         ? { ...rel, ...data, updatedAt: new Date().toISOString() }
         : rel
     );
-    const currentLocations = get().locations;
-    set({ relations: newRelations });
+    const currentLocations = state.locations;
+    set({
+      relations: newRelations,
+      undo: {
+        canUndo: true,
+        actionType: 'updateRelation',
+        actionLabel: ACTION_LABELS.updateRelation,
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
+    });
+    scheduleUndoClear();
     saveDreamRelations(newRelations);
     saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   deleteRelation: (id) => {
-    const newRelations = get().relations.filter((rel) => rel.id !== id);
-    const currentLocations = get().locations;
+    const state = get();
+    const snapshot = takeSnapshot(state);
+    const newRelations = state.relations.filter((rel) => rel.id !== id);
+    const currentLocations = state.locations;
     set({
       relations: newRelations,
-      selectedRelationId: get().selectedRelationId === id ? null : get().selectedRelationId,
+      selectedRelationId: state.selectedRelationId === id ? null : state.selectedRelationId,
+      undo: {
+        canUndo: true,
+        actionType: 'deleteRelation',
+        actionLabel: ACTION_LABELS.deleteRelation,
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
     });
+    scheduleUndoClear();
     saveDreamRelations(newRelations);
     saveDreamDataWithVersion(currentLocations, newRelations);
   },
@@ -544,6 +732,73 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     return loc
       ? { positionX: loc.positionX, positionY: loc.positionY }
       : { positionX: 50, positionY: 50 };
+  },
+
+  undo: () => {
+    const state = get();
+    const { undo } = state;
+    if (!undo.canUndo || !undo.snapshot) return;
+
+    const snapshot = undo.snapshot;
+
+    const restoredLocations = snapshot.locations;
+    const restoredRelations = snapshot.relations;
+
+    const newClusterPositions = new Map<string, { positionX: number; positionY: number }>();
+    if (snapshot.viewMode === 'cluster') {
+      const filtered = filterLocations(restoredLocations, state.filters);
+      const clusters = clusterLocations(filtered);
+      clusters.forEach((cluster) => {
+        const positions = arrangeLocationsInCluster(cluster);
+        positions.forEach((pos, id) => {
+          newClusterPositions.set(id, { positionX: pos.x, positionY: pos.y });
+        });
+      });
+    }
+
+    set({
+      locations: restoredLocations,
+      relations: restoredRelations,
+      selectedLocationId: snapshot.selectedLocationId,
+      selectedRelationId: snapshot.selectedRelationId,
+      savedMapPositions: snapshot.savedMapPositions,
+      viewMode: snapshot.viewMode,
+      clusterPositions: newClusterPositions,
+      undo: {
+        canUndo: false,
+        actionType: null,
+        actionLabel: '',
+        snapshot: null,
+        expireAt: 0,
+      },
+      pendingDragSnapshot: null,
+    });
+
+    if (undoTimer) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
+
+    saveDreamLocations(restoredLocations);
+    saveDreamRelations(restoredRelations);
+    saveDreamDataWithVersion(restoredLocations, restoredRelations);
+  },
+
+  clearUndo: () => {
+    set({
+      undo: {
+        canUndo: false,
+        actionType: null,
+        actionLabel: '',
+        snapshot: null,
+        expireAt: 0,
+      },
+      pendingDragSnapshot: null,
+    });
+    if (undoTimer) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
   },
 }));
 

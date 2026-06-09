@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Moon, Plus, BarChart3, Clock } from 'lucide-react';
+import { Moon, Plus, BarChart3, Clock, Undo2 } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { ImportExport } from '@/components/ImportExport/ImportExport';
 import { DreamStatsPanel } from '@/components/DreamStatsPanel/DreamStatsPanel';
@@ -10,7 +10,47 @@ export function Header() {
   const locations = useDreamStore((state) => state.locations);
   const relations = useDreamStore((state) => state.relations);
   const openForm = useDreamStore((state) => state.openForm);
+  const undoState = useDreamStore((state) => state.undo);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!undoState.canUndo || undoState.expireAt <= 0) {
+      setRemainingSeconds(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const remaining = Math.max(0, Math.ceil((undoState.expireAt - Date.now()) / 1000));
+      setRemainingSeconds(remaining);
+    };
+
+    updateRemaining();
+    const interval = setInterval(updateRemaining, 200);
+    return () => clearInterval(interval);
+  }, [undoState.canUndo, undoState.expireAt]);
+
+  const handleUndo = useCallback(() => {
+    useDreamStore.getState().undo();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+        if (useDreamStore.getState().undo.canUndo) {
+          handleUndo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo]);
 
   return (
     <div className="absolute top-0 left-0 right-0 z-10 p-4 md:p-6">
@@ -58,6 +98,27 @@ export function Header() {
               </p>
             </div>
           </div>
+
+          {undoState.canUndo && (
+            <button
+              onClick={handleUndo}
+              className="relative group px-3 py-2.5 rounded-xl text-sm font-medium text-white flex items-center gap-2 transition-all hover:scale-105 active:scale-95 animate-fade-in"
+              style={{
+                background: 'linear-gradient(135deg, rgba(52, 152, 219, 0.8) 0%, rgba(41, 128, 185, 0.8) 100%)',
+                border: '1px solid rgba(52, 152, 219, 0.5)',
+                boxShadow: '0 4px 15px rgba(52, 152, 219, 0.3)',
+              }}
+              title={`撤销${undoState.actionLabel ? ' ' + undoState.actionLabel : ''} (${remainingSeconds}s)`}
+            >
+              <Undo2 size={16} className="transition-transform group-hover:-rotate-12" />
+              <span className="hidden sm:inline">
+                撤销{undoState.actionLabel ? ' ' + undoState.actionLabel : ''}
+              </span>
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-white/20">
+                {remainingSeconds}
+              </span>
+            </button>
+          )}
 
           <button
             onClick={() => setIsStatsOpen(true)}

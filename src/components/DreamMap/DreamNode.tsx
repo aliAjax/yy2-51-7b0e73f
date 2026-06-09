@@ -22,6 +22,8 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const selectLocation = useDreamStore((state) => state.selectLocation);
   const updatePosition = useDreamStore((state) => state.updatePosition);
+  const beginDragPosition = useDreamStore((state) => state.beginDragPosition);
+  const endDragPosition = useDreamStore((state) => state.endDragPosition);
   const selectedLocationId = useDreamStore((state) => state.selectedLocationId);
   const selectedRelationId = useDreamStore((state) => state.selectedRelationId);
   const relations = useDreamStore((state) => state.relations);
@@ -59,6 +61,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
     if (!isDraggable) return;
     e.preventDefault();
     e.stopPropagation();
+    beginDragPosition();
     const container = mapContainerRef.current;
     if (container) {
       container.dispatchEvent(new CustomEvent('dreamNodeDragStart'));
@@ -71,7 +74,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       });
       setIsDragging(true);
     }
-  }, [isDraggable, mapContainerRef]);
+  }, [isDraggable, mapContainerRef, beginDragPosition]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (!isDraggable) return;
@@ -81,6 +84,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       return;
     }
     e.stopPropagation();
+    beginDragPosition();
     const container = mapContainerRef.current;
     if (container) {
       container.dispatchEvent(new CustomEvent('dreamNodeDragStart'));
@@ -94,7 +98,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       });
       setIsDragging(true);
     }
-  }, [isDraggable, mapContainerRef, dispatchNodeDragEnd]);
+  }, [isDraggable, mapContainerRef, dispatchNodeDragEnd, beginDragPosition]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -115,12 +119,13 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       const clampedX = Math.max(5, Math.min(95, x));
       const clampedY = Math.max(5, Math.min(95, y));
 
-      updatePosition(location.id, clampedX, clampedY);
+      updatePosition(location.id, clampedX, clampedY, { silent: true });
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 1) {
         dispatchNodeDragEnd();
+        endDragPosition();
         setIsDragging(false);
         return;
       }
@@ -140,11 +145,12 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       const clampedX = Math.max(5, Math.min(95, x));
       const clampedY = Math.max(5, Math.min(95, y));
 
-      updatePosition(location.id, clampedX, clampedY);
+      updatePosition(location.id, clampedX, clampedY, { silent: true });
     };
 
     const handleEnd = () => {
       dispatchNodeDragEnd();
+      endDragPosition();
       setIsDragging(false);
     };
 
@@ -159,7 +165,7 @@ export function DreamNode({ location, viewTransform, mapContainerRef, isDraggabl
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleEnd);
     };
-  }, [isDragging, dragOffset, location.id, updatePosition, viewTransform, mapContainerRef, dispatchNodeDragEnd]);
+  }, [isDragging, dragOffset, location.id, updatePosition, viewTransform, mapContainerRef, dispatchNodeDragEnd, endDragPosition]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();

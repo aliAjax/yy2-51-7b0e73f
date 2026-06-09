@@ -31,7 +31,7 @@ export function Header() {
   }, [undoState.canUndo, undoState.expireAt]);
 
   const handleUndo = useCallback(() => {
-    useDreamStore.getState().undo();
+    useDreamStore.getState().performUndo();
   }, []);
 
   useEffect(() => {

@@ -138,7 +138,7 @@ interface DreamActions {
   setClusterPosition: (id: string, x: number, y: number) => void;
   setClusterPositions: (positions: Map<string, { positionX: number; positionY: number }>) => void;
   getDisplayPosition: (id: string) => { positionX: number; positionY: number };
-  undo: () => void;
+  performUndo: () => void;
   clearUndo: () => void;
 }
 
@@ -734,7 +734,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       : { positionX: 50, positionY: 50 };
   },
 
-  undo: () => {
+  performUndo: () => {
     const state = get();
     const { undo } = state;
     if (!undo.canUndo || !undo.snapshot) return;

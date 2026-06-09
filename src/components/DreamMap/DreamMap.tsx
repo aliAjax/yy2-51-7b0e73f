@@ -1,11 +1,16 @@
-import { useRef, useEffect, useMemo } from 'react';
-import { SearchX } from 'lucide-react';
+import { useRef, useEffect, useMemo, useState } from 'react';
+import { Map, Network, SearchX } from 'lucide-react';
 import { DreamNode } from './DreamNode';
 import { RelationLines } from './RelationLines';
 import { useDreamStore, filterLocations } from '@/store/dreamStore';
+import { buildDreamClusters } from '@/utils/clustering';
+import { hexToRgba } from '@/utils/storage';
+
+type MapViewMode = 'map' | 'cluster';
 
 export function DreamMap() {
   const mapRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useState<MapViewMode>('map');
   const locations = useDreamStore((state) => state.locations);
   const filters = useDreamStore((state) => state.filters);
   const clearFilters = useDreamStore((state) => state.clearFilters);
@@ -18,6 +23,14 @@ export function DreamMap() {
 
   const hasActiveFilters = !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
   const hasResults = filteredLocations.length > 0;
+  const isClusterView = viewMode === 'cluster';
+
+  const clusterResult = useMemo(
+    () => buildDreamClusters(filteredLocations),
+    [filteredLocations]
+  );
+
+  const visibleLocations = isClusterView ? clusterResult.locations : filteredLocations;
 
   useEffect(() => {
     const canvas = document.createElement('canvas');
@@ -164,10 +177,82 @@ export function DreamMap() {
         </div>
       )}
 
-      <RelationLines locations={filteredLocations} />
+      {locations.length > 0 && (
+        <div className="absolute top-24 left-1/2 z-40 flex -translate-x-1/2 items-center rounded-xl bg-[#120f24]/75 border border-purple-300/20 p-1 backdrop-blur-md shadow-lg shadow-purple-950/20 md:top-28">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('map');
+            }}
+            className={`flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-all ${
+              !isClusterView
+                ? 'bg-purple-400/20 text-white shadow-inner shadow-white/5'
+                : 'text-purple-200/65 hover:text-purple-100 hover:bg-white/5'
+            }`}
+            title="普通地图"
+            aria-pressed={!isClusterView}
+          >
+            <Map size={15} />
+            <span className="hidden sm:inline">普通地图</span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode('cluster');
+            }}
+            className={`flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-all ${
+              isClusterView
+                ? 'bg-purple-400/20 text-white shadow-inner shadow-white/5'
+                : 'text-purple-200/65 hover:text-purple-100 hover:bg-white/5'
+            }`}
+            title="聚类视图"
+            aria-pressed={isClusterView}
+          >
+            <Network size={15} />
+            <span className="hidden sm:inline">聚类视图</span>
+          </button>
+        </div>
+      )}
 
-      {filteredLocations.map((location) => (
-        <DreamNode key={location.id} location={location} />
+      {isClusterView && hasResults && (
+        <div className="absolute inset-0 pointer-events-none z-[5]">
+          {clusterResult.clusters.map((cluster) => (
+            <div
+              key={cluster.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed"
+              style={{
+                left: `${cluster.centerX}%`,
+                top: `${cluster.centerY}%`,
+                width: `${Math.max(150, 92 + cluster.locationIds.length * 18)}px`,
+                height: `${Math.max(150, 92 + cluster.locationIds.length * 18)}px`,
+                borderColor: hexToRgba(cluster.color, 0.35),
+                background: `radial-gradient(circle, ${hexToRgba(cluster.color, 0.12)} 0%, ${hexToRgba(cluster.color, 0.04)} 45%, transparent 72%)`,
+              }}
+            >
+              <div
+                className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-medium"
+                style={{
+                  color: cluster.color,
+                  backgroundColor: hexToRgba('#100d22', 0.82),
+                  border: `1px solid ${hexToRgba(cluster.color, 0.28)}`,
+                }}
+              >
+                {cluster.name}
+              </div>
+              <div className="absolute left-1/2 top-8 -translate-x-1/2 max-w-32 text-center text-[10px] leading-4 text-purple-100/45">
+                {cluster.keywords.join(' / ')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <RelationLines locations={visibleLocations} />
+
+      {visibleLocations.map((location) => (
+        <DreamNode key={location.id} location={location} draggable={!isClusterView} />
       ))}
     </div>
   );

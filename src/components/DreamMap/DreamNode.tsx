@@ -5,9 +5,10 @@ import { hexToRgba, getContrastColor } from '@/utils/storage';
 
 interface DreamNodeProps {
   location: DreamLocation;
+  draggable?: boolean;
 }
 
-export function DreamNode({ location }: DreamNodeProps) {
+export function DreamNode({ location, draggable = true }: DreamNodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -42,6 +43,7 @@ export function DreamNode({ location }: DreamNodeProps) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!draggable) return;
     const rect = nodeRef.current?.getBoundingClientRect();
     if (rect) {
       setDragOffset({
@@ -50,9 +52,10 @@ export function DreamNode({ location }: DreamNodeProps) {
       });
       setIsDragging(true);
     }
-  }, []);
+  }, [draggable]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!draggable) return;
     const touch = e.touches[0];
     const rect = nodeRef.current?.getBoundingClientRect();
     if (rect) {
@@ -62,7 +65,7 @@ export function DreamNode({ location }: DreamNodeProps) {
       });
       setIsDragging(true);
     }
-  }, []);
+  }, [draggable]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -128,7 +131,9 @@ export function DreamNode({ location }: DreamNodeProps) {
   return (
     <div
       ref={nodeRef}
-      className={`absolute cursor-grab select-none transition-all duration-300 ${
+      className={`absolute select-none transition-all duration-300 ${
+        draggable ? 'cursor-grab' : 'cursor-pointer'
+      } ${
         isDragging ? 'cursor-grabbing z-50 scale-110' : 'z-10 hover:scale-105'
       } ${isSelected ? 'z-20 scale-105' : ''} ${isRelated ? 'z-15 scale-102' : ''}`}
       style={{

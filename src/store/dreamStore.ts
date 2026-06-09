@@ -95,6 +95,7 @@ interface DreamActions {
   clearTimelineEventTypes: () => void;
   clearFilters: () => void;
   getFilteredLocations: () => DreamLocation[];
+  getFilteredRelations: () => DreamRelation[];
   getAllTags: () => string[];
   importLocations: (imported: DreamLocation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
   exportLocations: () => DreamLocation[];
@@ -368,6 +369,15 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
   getFilteredLocations: () => {
     return filterLocations(get().locations, get().filters);
+  },
+
+  getFilteredRelations: () => {
+    const filteredLocationIds = new Set(
+      filterLocations(get().locations, get().filters).map((loc) => loc.id)
+    );
+    return get().relations.filter(
+      (rel) => filteredLocationIds.has(rel.fromId) && filteredLocationIds.has(rel.toId)
+    );
   },
 
   getAllTags: () => {

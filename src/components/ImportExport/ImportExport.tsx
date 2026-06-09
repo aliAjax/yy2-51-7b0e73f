@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
-import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2, Link, MapPin } from 'lucide-react';
+import { useState, useRef, useCallback, useMemo } from 'react';
+import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2, Link, MapPin, Filter } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import type { DreamLocation, DreamRelation } from '@/types';
 import { hexToRgba } from '@/utils/storage';
@@ -40,9 +40,13 @@ export function ImportExport() {
   const importRelations = useDreamStore((state) => state.importRelations);
   const locations = useDreamStore((state) => state.locations);
   const relations = useDreamStore((state) => state.relations);
+  const getFilteredLocations = useDreamStore((state) => state.getFilteredLocations);
+  const getFilteredRelations = useDreamStore((state) => state.getFilteredRelations);
+  const filters = useDreamStore((state) => state.filters);
 
   const [showDialog, setShowDialog] = useState(false);
   const [exportType, setExportType] = useState<ExportDataType>('all');
+  const [exportFilteredOnly, setExportFilteredOnly] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +59,19 @@ export function ImportExport() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogType>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLLabelElement>(null);
+
+  const hasActiveFilters = useMemo(() => {
+    return !!filters.searchText.trim() || !!filters.frequency || filters.selectedTags.length > 0;
+  }, [filters]);
+
+  const filteredCount = useMemo(() => {
+    if (!hasActiveFilters) return { locations: locations.length, relations: relations.length };
+    const filteredLocs = getFilteredLocations();
+    const filteredRels = getFilteredRelations();
+    return { locations: filteredLocs.length, relations: filteredRels.length };
+  }, [hasActiveFilters, locations.length, relations.length, getFilteredLocations, getFilteredRelations]);
+
+  const effectiveFilteredOnly = exportFilteredOnly && hasActiveFilters;
 
   const validateDreamLocation = (item: unknown): item is DreamLocation & { tags?: string[] } => {
     if (typeof item !== 'object' || item === null) return false;
@@ -300,18 +317,20 @@ export function ImportExport() {
     processFile(file);
   };
 
-  const buildExportData = (type: ExportDataType = exportType): ExportData => {
+  const buildExportData = (type: ExportDataType = exportType, filteredOnly: boolean = effectiveFilteredOnly): ExportData => {
+    const locationsToExport = filteredOnly ? getFilteredLocations() : exportLocations();
+    const relationsToExport = filteredOnly ? getFilteredRelations() : exportRelations();
     return {
       version: '1.0',
       exportedAt: new Date().toISOString(),
-      locations: type === 'relations' ? [] : exportLocations(),
-      relations: type === 'locations' ? [] : exportRelations(),
+      locations: type === 'relations' ? [] : locationsToExport,
+      relations: type === 'locations' ? [] : relationsToExport,
     };
   };
 
   const handleExport = (type: ExportDataType = exportType) => {
     setExportType(type);
-    const data = buildExportData(type);
+    const data = buildExportData(type, effectiveFilteredOnly);
     const hasLocations = data.locations.length > 0;
     const hasRelations = data.relations.length > 0;
 
@@ -482,33 +501,127 @@ export function ImportExport() {
                 onClick={() => setShowExportMenu(false)}
               />
               <div
-                className="absolute top-full right-0 mt-2 w-44 rounded-xl overflow-hidden z-50 animate-scale-in"
+                className="absolute top-full right-0 mt-2 w-60 rounded-xl overflow-hidden z-50 animate-scale-in"
                 style={{
                   background: `linear-gradient(145deg, ${hexToRgba('#1e1e3f', 0.98)} 0%, ${hexToRgba('#0f0f2a', 0.99)} 100%)`,
                   border: '1px solid rgba(150, 130, 200, 0.2)',
                   boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
                 }}
               >
+                {hasActiveFilters && (
+                  <>
+                    <div className="px-4 py-2 border-b border-purple-300/10 bg-purple-500/5">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Filter size={12} className="text-purple-300" />
+                        <span className="text-[11px] font-medium text-purple-300/70 uppercase tracking-wider">
+                          导出筛选结果
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-purple-300/40">
+                        当前筛选：{filteredCount.locations} 个地点 · {filteredCount.relations} 条关系
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setExportFilteredOnly(true);
+                        handleExport('all');
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-purple-100 hover:bg-purple-500/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
+                    >
+                      <FileJson size={16} className="text-purple-300" />
+                      <div className="flex-1">
+                        <span>地点及关系</span>
+                        <span className="text-[10px] text-purple-300/50 ml-2">
+                          {filteredCount.locations} + {filteredCount.relations}
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setExportFilteredOnly(true);
+                        handleExport('locations');
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
+                    >
+                      <MapPin size={16} className="text-purple-300" />
+                      <div className="flex-1">
+                        <span>仅地点</span>
+                        <span className="text-[10px] text-purple-300/50 ml-2">
+                          {filteredCount.locations} 个
+                        </span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setExportFilteredOnly(true);
+                        handleExport('relations');
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
+                    >
+                      <Link size={16} className="text-purple-300" />
+                      <div className="flex-1">
+                        <span>仅关系</span>
+                        <span className="text-[10px] text-purple-300/50 ml-2">
+                          {filteredCount.relations} 条
+                        </span>
+                      </div>
+                    </button>
+
+                    <div className="h-px bg-purple-300/10" />
+                  </>
+                )}
+
+                <div className="px-4 py-2 border-b border-purple-300/10">
+                  <span className="text-[11px] font-medium text-purple-300/50 uppercase tracking-wider">
+                    全部导出
+                  </span>
+                </div>
+
                 <button
-                  onClick={() => handleExport('all')}
-                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    setExportFilteredOnly(false);
+                    handleExport('all');
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
                 >
-                  <FileJson size={16} className="text-purple-300" />
-                  全部数据
+                  <FileJson size={16} className="text-purple-300/60" />
+                  <div className="flex-1">
+                    <span>全部数据</span>
+                    <span className="text-[10px] text-purple-300/40 ml-2">
+                      {locations.length} + {relations.length}
+                    </span>
+                  </div>
                 </button>
                 <button
-                  onClick={() => handleExport('locations')}
-                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    setExportFilteredOnly(false);
+                    handleExport('locations');
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
                 >
-                  <MapPin size={16} className="text-purple-300" />
-                  仅地点
+                  <MapPin size={16} className="text-purple-300/60" />
+                  <div className="flex-1">
+                    <span>仅地点</span>
+                    <span className="text-[10px] text-purple-300/40 ml-2">
+                      {locations.length} 个
+                    </span>
+                  </div>
                 </button>
                 <button
-                  onClick={() => handleExport('relations')}
+                  onClick={() => {
+                    setExportFilteredOnly(false);
+                    handleExport('relations');
+                  }}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
                 >
-                  <Link size={16} className="text-purple-300" />
-                  仅关系
+                  <Link size={16} className="text-purple-300/60" />
+                  <div className="flex-1">
+                    <span>仅关系</span>
+                    <span className="text-[10px] text-purple-300/40 ml-2">
+                      {relations.length} 条
+                    </span>
+                  </div>
                 </button>
               </div>
             </>

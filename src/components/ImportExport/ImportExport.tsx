@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2, Link, MapPin, Filter } from 'lucide-react';
+import { Download, Upload, X, AlertTriangle, Check, FileJson, Trash2, Link, MapPin, Filter, Copy, SkipForward, RefreshCw } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
+import type { ConflictResolution, LocationConflictResolutions, RelationConflictResolutions } from '@/store/dreamStore';
 import type { DreamLocation, DreamRelation } from '@/types';
 import { hexToRgba } from '@/utils/storage';
 
@@ -20,6 +21,7 @@ interface ImportPreview {
   skippedLocationCount: number;
   skippedRelationCount: number;
   orphanRelations: DreamRelation[];
+  relationsReferencingDuplicateLocations: string[];
 }
 
 type ImportMode = 'merge' | 'replace';
@@ -52,9 +54,11 @@ export function ImportExport() {
   const [error, setError] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<ImportMode>('merge');
   const [importResult, setImportResult] = useState<{
-    locations: { added: number; updated: number; skipped: number };
-    relations: { added: number; updated: number; skipped: number };
+    locations: { added: number; updated: number; skipped: number; savedAsNew: number };
+    relations: { added: number; updated: number; skipped: number; savedAsNew: number; remapped: number };
   } | null>(null);
+  const [locationDefaultResolution, setLocationDefaultResolution] = useState<ConflictResolution>('overwrite');
+  const [relationDefaultResolution, setRelationDefaultResolution] = useState<ConflictResolution>('overwrite');
   const [isDragging, setIsDragging] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogType>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -250,6 +254,11 @@ export function ImportExport() {
 
         const invalidRelationCount = relationsArray.filter((item) => !validateDreamRelation(item)).length;
 
+        const duplicateLocationIdSet = new Set(duplicateLocationIds);
+        const relationsReferencingDuplicateLocations: string[] = validRelations
+          .filter((rel) => duplicateLocationIdSet.has(rel.fromId) || duplicateLocationIdSet.has(rel.toId))
+          .map((rel) => rel.id);
+
         setPreview({
           locations: validLocations,
           relations: validRelations,
@@ -266,6 +275,7 @@ export function ImportExport() {
           skippedLocationCount: invalidLocationCount + internalDuplicateLocationCount,
           skippedRelationCount: invalidRelationCount + internalDuplicateRelationCount + orphanRelations.length,
           orphanRelations,
+          relationsReferencingDuplicateLocations,
         });
       } catch {
         setError('读取文件时发生未知错误');
@@ -357,6 +367,33 @@ export function ImportExport() {
     URL.revokeObjectURL(url);
   };
 
+  const previewLocationStats = useMemo(() => {
+    if (!preview) return { added: 0, willUpdate: 0, willSkip: 0, willSaveAsNew: 0 };
+    const added = preview.newLocationIds.length;
+    const duplicateCount = preview.duplicateLocationIds.length;
+    let willUpdate = 0;
+    let willSkip = 0;
+    let willSaveAsNew = 0;
+    if (locationDefaultResolution === 'overwrite') willUpdate = duplicateCount;
+    else if (locationDefaultResolution === 'skip') willSkip = duplicateCount;
+    else willSaveAsNew = duplicateCount;
+    return { added, willUpdate, willSkip, willSaveAsNew };
+  }, [preview, locationDefaultResolution]);
+
+  const previewRelationStats = useMemo(() => {
+    if (!preview) return { added: 0, willUpdate: 0, willSkip: 0, willSaveAsNew: 0, willRemapRefs: 0 };
+    const added = preview.newRelationIds.length;
+    const duplicateCount = preview.duplicateRelationIds.length;
+    let willUpdate = 0;
+    let willSkip = 0;
+    let willSaveAsNew = 0;
+    if (relationDefaultResolution === 'overwrite') willUpdate = duplicateCount;
+    else if (relationDefaultResolution === 'skip') willSkip = duplicateCount;
+    else willSaveAsNew = duplicateCount;
+    const willRemapRefs = locationDefaultResolution === 'saveAsNew' ? preview.relationsReferencingDuplicateLocations.length : 0;
+    return { added, willUpdate, willSkip, willSaveAsNew, willRemapRefs };
+  }, [preview, relationDefaultResolution, locationDefaultResolution]);
+
   const handleImport = () => {
     if (!preview) return;
 
@@ -371,12 +408,26 @@ export function ImportExport() {
   const doImport = () => {
     if (!preview) return;
 
-    const locationResult = importLocations(preview.locations, importMode);
-    const relationResult = importRelations(preview.relations, importMode);
+    const locationResolutions: LocationConflictResolutions = { default: locationDefaultResolution };
+    const relationResolutions: RelationConflictResolutions = { default: relationDefaultResolution };
+
+    const locationResult = importLocations(preview.locations, importMode, locationResolutions);
+    const relationResult = importRelations(preview.relations, importMode, relationResolutions, locationResult.idRemap);
 
     setImportResult({
-      locations: { ...locationResult, skipped: preview.skippedLocationCount },
-      relations: { ...relationResult, skipped: preview.skippedRelationCount },
+      locations: {
+        added: locationResult.added,
+        updated: locationResult.updated,
+        skipped: locationResult.skipped + preview.invalidLocationCount + preview.internalDuplicateLocationCount,
+        savedAsNew: locationResult.savedAsNew,
+      },
+      relations: {
+        added: relationResult.added,
+        updated: relationResult.updated,
+        skipped: relationResult.skipped + preview.invalidRelationCount + preview.internalDuplicateRelationCount + preview.orphanRelations.length,
+        savedAsNew: relationResult.savedAsNew,
+        remapped: relationResult.locationRefRemappedCount + relationResult.savedAsNew,
+      },
     });
     setConfirmDialog(null);
   };
@@ -388,6 +439,8 @@ export function ImportExport() {
     setImportResult(null);
     setImportMode('merge');
     setConfirmDialog(null);
+    setLocationDefaultResolution('overwrite');
+    setRelationDefaultResolution('overwrite');
   };
 
   const openDialog = () => {
@@ -397,6 +450,8 @@ export function ImportExport() {
     setImportResult(null);
     setImportMode('merge');
     setConfirmDialog(null);
+    setLocationDefaultResolution('overwrite');
+    setRelationDefaultResolution('overwrite');
   };
 
   const handleConfirm = () => {
@@ -677,17 +732,22 @@ export function ImportExport() {
                     <div>
                       <p className="text-sm font-medium text-green-300">导入成功</p>
                       <div className="text-xs text-green-300/70 mt-2 space-y-1.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <MapPin size={12} />
-                          <span>地点：新增 {importResult.locations.added} 个</span>
-                          {importResult.locations.updated > 0 && <span>，更新 {importResult.locations.updated} 个</span>}
-                          {importResult.locations.skipped > 0 && <span>，跳过 {importResult.locations.skipped} 个</span>}
+                          <span>地点：</span>
+                          {importResult.locations.added > 0 && <span className="text-green-300">新增 {importResult.locations.added}</span>}
+                          {importResult.locations.updated > 0 && <span className="text-yellow-300">，更新 {importResult.locations.updated}</span>}
+                          {importResult.locations.savedAsNew > 0 && <span className="text-blue-300">，另存 {importResult.locations.savedAsNew}</span>}
+                          {importResult.locations.skipped > 0 && <span className="text-gray-400">，跳过 {importResult.locations.skipped}</span>}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Link size={12} />
-                          <span>关系：新增 {importResult.relations.added} 条</span>
-                          {importResult.relations.updated > 0 && <span>，更新 {importResult.relations.updated} 条</span>}
-                          {importResult.relations.skipped > 0 && <span>，跳过 {importResult.relations.skipped} 条</span>}
+                          <span>关系：</span>
+                          {importResult.relations.added > 0 && <span className="text-green-300">新增 {importResult.relations.added}</span>}
+                          {importResult.relations.updated > 0 && <span className="text-yellow-300">，更新 {importResult.relations.updated}</span>}
+                          {importResult.relations.savedAsNew > 0 && <span className="text-blue-300">，另存 {importResult.relations.savedAsNew}</span>}
+                          {importResult.relations.remapped > 0 && <span className="text-cyan-300">，重映射 {importResult.relations.remapped}</span>}
+                          {importResult.relations.skipped > 0 && <span className="text-gray-400">，跳过 {importResult.relations.skipped}</span>}
                         </div>
                       </div>
                     </div>
@@ -744,13 +804,27 @@ export function ImportExport() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-center">
                         <div className="p-2 rounded-lg bg-white/5">
-                          <p className="text-lg font-serif text-white">{preview.newLocationIds.length}</p>
+                          <p className="text-lg font-serif text-green-300">{importMode === 'replace' ? preview.locations.length : previewLocationStats.added}</p>
                           <p className="text-[10px] text-green-300/70">新增</p>
                         </div>
-                        <div className="p-2 rounded-lg bg-white/5">
-                          <p className="text-lg font-serif text-yellow-300">{preview.duplicateLocationIds.length}</p>
-                          <p className="text-[10px] text-yellow-300/70">重复</p>
-                        </div>
+                        {importMode === 'merge' && previewLocationStats.willUpdate > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-yellow-300">{previewLocationStats.willUpdate}</p>
+                            <p className="text-[10px] text-yellow-300/70">覆盖</p>
+                          </div>
+                        )}
+                        {importMode === 'merge' && previewLocationStats.willSaveAsNew > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-blue-300">{previewLocationStats.willSaveAsNew}</p>
+                            <p className="text-[10px] text-blue-300/70">另存</p>
+                          </div>
+                        )}
+                        {importMode === 'merge' && previewLocationStats.willSkip > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-gray-400">{previewLocationStats.willSkip}</p>
+                            <p className="text-[10px] text-gray-400/70">跳过</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -761,13 +835,33 @@ export function ImportExport() {
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-center">
                         <div className="p-2 rounded-lg bg-white/5">
-                          <p className="text-lg font-serif text-white">{preview.newRelationIds.length}</p>
+                          <p className="text-lg font-serif text-green-300">{importMode === 'replace' ? preview.relations.length : previewRelationStats.added}</p>
                           <p className="text-[10px] text-green-300/70">新增</p>
                         </div>
-                        <div className="p-2 rounded-lg bg-white/5">
-                          <p className="text-lg font-serif text-yellow-300">{preview.duplicateRelationIds.length}</p>
-                          <p className="text-[10px] text-yellow-300/70">重复</p>
-                        </div>
+                        {importMode === 'merge' && previewRelationStats.willUpdate > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-yellow-300">{previewRelationStats.willUpdate}</p>
+                            <p className="text-[10px] text-yellow-300/70">覆盖</p>
+                          </div>
+                        )}
+                        {importMode === 'merge' && previewRelationStats.willSaveAsNew > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-blue-300">{previewRelationStats.willSaveAsNew}</p>
+                            <p className="text-[10px] text-blue-300/70">另存</p>
+                          </div>
+                        )}
+                        {importMode === 'merge' && previewRelationStats.willSkip > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-gray-400">{previewRelationStats.willSkip}</p>
+                            <p className="text-[10px] text-gray-400/70">跳过</p>
+                          </div>
+                        )}
+                        {importMode === 'merge' && previewRelationStats.willRemapRefs > 0 && (
+                          <div className="p-2 rounded-lg bg-white/5">
+                            <p className="text-lg font-serif text-cyan-300">{previewRelationStats.willRemapRefs}</p>
+                            <p className="text-[10px] text-cyan-300/70">重映射</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -778,7 +872,7 @@ export function ImportExport() {
                         <AlertTriangle size={18} className="text-orange-400 flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="text-sm font-medium text-orange-300">
-                            跳过部分数据
+                            无效数据将被跳过
                           </p>
                           <p className="text-xs text-orange-300/70 mt-1 space-y-0.5">
                             {preview.skippedLocationCount > 0 && (
@@ -814,7 +908,7 @@ export function ImportExport() {
                         <div>
                           <p className="text-sm font-medium text-white">合并模式</p>
                           <p className="text-xs text-purple-300/60 mt-1">
-                            保留现有数据，新增的地点和关系添加到列表中，重复 ID 的数据将被更新。
+                            保留现有数据，可针对重复 ID 选择冲突处理策略。
                           </p>
                         </div>
                       </label>
@@ -846,6 +940,137 @@ export function ImportExport() {
                       </label>
                     </div>
                   </div>
+
+                  {importMode === 'merge' && (preview.duplicateLocationIds.length > 0 || preview.duplicateRelationIds.length > 0) && (
+                    <div className="space-y-4">
+                      <p className="text-sm font-medium text-purple-200 flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-yellow-400" />
+                        冲突处理策略
+                      </p>
+
+                      {preview.duplicateLocationIds.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs text-purple-300/70">
+                            发现 <span className="text-yellow-300 font-medium">{preview.duplicateLocationIds.length}</span> 个重复地点 ID，选择处理方式：
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {([
+                              { value: 'skip', label: '跳过', icon: SkipForward, color: 'gray' },
+                              { value: 'overwrite', label: '覆盖', icon: RefreshCw, color: 'yellow' },
+                              { value: 'saveAsNew', label: '另存为新', icon: Copy, color: 'blue' },
+                            ] as const).map(({ value, label, icon: Icon, color }) => (
+                              <label
+                                key={value}
+                                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl cursor-pointer transition-all border ${
+                                  locationDefaultResolution === value
+                                    ? color === 'gray'
+                                      ? 'bg-gray-500/20 border-gray-400/40'
+                                      : color === 'yellow'
+                                      ? 'bg-yellow-500/20 border-yellow-400/40'
+                                      : 'bg-blue-500/20 border-blue-400/40'
+                                    : 'bg-white/5 border-purple-300/15 hover:bg-white/10'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="location-resolution"
+                                  value={value}
+                                  checked={locationDefaultResolution === value}
+                                  onChange={() => setLocationDefaultResolution(value)}
+                                  className="sr-only"
+                                />
+                                <Icon
+                                  size={16}
+                                  className={
+                                    color === 'gray'
+                                      ? 'text-gray-300'
+                                      : color === 'yellow'
+                                      ? 'text-yellow-300'
+                                      : 'text-blue-300'
+                                  }
+                                />
+                                <span
+                                  className={`text-xs font-medium ${
+                                    color === 'gray'
+                                      ? 'text-gray-200'
+                                      : color === 'yellow'
+                                      ? 'text-yellow-200'
+                                      : 'text-blue-200'
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {preview.duplicateRelationIds.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs text-purple-300/70">
+                            发现 <span className="text-yellow-300 font-medium">{preview.duplicateRelationIds.length}</span> 条重复关系 ID，选择处理方式：
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {([
+                              { value: 'skip', label: '跳过', icon: SkipForward, color: 'gray' },
+                              { value: 'overwrite', label: '覆盖', icon: RefreshCw, color: 'yellow' },
+                              { value: 'saveAsNew', label: '另存为新', icon: Copy, color: 'blue' },
+                            ] as const).map(({ value, label, icon: Icon, color }) => (
+                              <label
+                                key={value}
+                                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl cursor-pointer transition-all border ${
+                                  relationDefaultResolution === value
+                                    ? color === 'gray'
+                                      ? 'bg-gray-500/20 border-gray-400/40'
+                                      : color === 'yellow'
+                                      ? 'bg-yellow-500/20 border-yellow-400/40'
+                                      : 'bg-blue-500/20 border-blue-400/40'
+                                    : 'bg-white/5 border-purple-300/15 hover:bg-white/10'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="relation-resolution"
+                                  value={value}
+                                  checked={relationDefaultResolution === value}
+                                  onChange={() => setRelationDefaultResolution(value)}
+                                  className="sr-only"
+                                />
+                                <Icon
+                                  size={16}
+                                  className={
+                                    color === 'gray'
+                                      ? 'text-gray-300'
+                                      : color === 'yellow'
+                                      ? 'text-yellow-300'
+                                      : 'text-blue-300'
+                                  }
+                                />
+                                <span
+                                  className={`text-xs font-medium ${
+                                    color === 'gray'
+                                      ? 'text-gray-200'
+                                      : color === 'yellow'
+                                      ? 'text-yellow-200'
+                                      : 'text-blue-200'
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                          {locationDefaultResolution === 'saveAsNew' && preview.relationsReferencingDuplicateLocations.length > 0 && (
+                            <p className="text-[11px] text-blue-300/70 flex items-start gap-1.5">
+                              <Check size={12} className="mt-0.5 flex-shrink-0" />
+                              将有 <span className="text-cyan-300 font-medium">{preview.relationsReferencingDuplicateLocations.length}</span> 条关系的地点引用会自动同步到新 ID。
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="max-h-48 overflow-y-auto rounded-xl bg-white/5 border border-purple-300/10">
                     <div className="p-3 border-b border-purple-300/10">

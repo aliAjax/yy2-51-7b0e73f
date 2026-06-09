@@ -41,6 +41,34 @@ export function filterLocations(
 
 export type ViewMode = 'map' | 'cluster';
 export type EventTypeFilter = 'create' | 'update';
+export type ConflictResolution = 'skip' | 'overwrite' | 'saveAsNew';
+
+export interface LocationConflictResolutions {
+  default: ConflictResolution;
+  perItem?: Record<string, ConflictResolution>;
+}
+
+export interface RelationConflictResolutions {
+  default: ConflictResolution;
+  perItem?: Record<string, ConflictResolution>;
+}
+
+export interface ImportLocationsResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  savedAsNew: number;
+  idRemap: Map<string, string>;
+}
+
+export interface ImportRelationsResult {
+  added: number;
+  updated: number;
+  skipped: number;
+  savedAsNew: number;
+  idRemap: Map<string, string>;
+  locationRefRemappedCount: number;
+}
 
 interface FilterState {
   searchText: string;
@@ -130,9 +158,9 @@ interface DreamActions {
   getFilteredLocations: () => DreamLocation[];
   getFilteredRelations: () => DreamRelation[];
   getAllTags: () => string[];
-  importLocations: (imported: DreamLocation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
+  importLocations: (imported: DreamLocation[], mode: 'merge' | 'replace', resolutions?: LocationConflictResolutions) => ImportLocationsResult;
   exportLocations: () => DreamLocation[];
-  importRelations: (imported: DreamRelation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
+  importRelations: (imported: DreamRelation[], mode: 'merge' | 'replace', resolutions?: RelationConflictResolutions, locationIdRemap?: Map<string, string>) => ImportRelationsResult;
   exportRelations: () => DreamRelation[];
   setViewMode: (mode: ViewMode) => void;
   setClusterPosition: (id: string, x: number, y: number) => void;
@@ -576,15 +604,18 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     return Array.from(tagsSet).sort();
   },
 
-  importLocations: (imported, mode) => {
+  importLocations: (imported, mode, resolutions) => {
     const currentLocations = get().locations;
     const currentRelations = get().relations;
     let added = 0;
     let updated = 0;
+    let skipped = 0;
+    let savedAsNew = 0;
+    const idRemap = new Map<string, string>();
 
     const validation = validateImportedData(imported, []);
     const validImported = validation.validLocations;
-    const skipped = validation.invalidLocationCount;
+    skipped += validation.invalidLocationCount;
 
     if (validation.invalidLocationCount > 0) {
       console.warn(
@@ -596,44 +627,87 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       set({ locations: validImported, selectedLocationId: null });
       saveDreamLocations(validImported);
       saveDreamDataWithVersion(validImported, currentRelations);
-      return { added: validImported.length, updated: 0, skipped };
+      return { added: validImported.length, updated: 0, skipped, savedAsNew: 0, idRemap };
     }
 
+    const defaultResolution: ConflictResolution = resolutions?.default ?? 'overwrite';
     const existingMap = new Map(currentLocations.map((loc) => [loc.id, loc]));
     const result: DreamLocation[] = [...currentLocations];
+    const now = new Date().toISOString();
 
     validImported.forEach((item) => {
-      if (existingMap.has(item.id)) {
-        const index = result.findIndex((loc) => loc.id === item.id);
-        if (index !== -1) {
-          result[index] = { ...item, updatedAt: new Date().toISOString() };
-          updated++;
-        }
-      } else {
+      if (!existingMap.has(item.id)) {
         result.push(item);
         added++;
+        return;
+      }
+
+      const resolution = resolutions?.perItem?.[item.id] ?? defaultResolution;
+
+      if (resolution === 'skip') {
+        skipped++;
+        return;
+      }
+
+      if (resolution === 'overwrite') {
+        const index = result.findIndex((loc) => loc.id === item.id);
+        if (index !== -1) {
+          result[index] = { ...item, updatedAt: now };
+          updated++;
+        }
+        return;
+      }
+
+      if (resolution === 'saveAsNew') {
+        const newId = generateId();
+        idRemap.set(item.id, newId);
+        result.push({ ...item, id: newId, createdAt: now, updatedAt: now });
+        savedAsNew++;
+        return;
       }
     });
 
     set({ locations: result });
     saveDreamLocations(result);
     saveDreamDataWithVersion(result, currentRelations);
-    return { added, updated, skipped };
+    return { added, updated, skipped, savedAsNew, idRemap };
   },
 
   exportLocations: () => {
     return get().locations;
   },
 
-  importRelations: (imported, mode) => {
+  importRelations: (imported, mode, resolutions, locationIdRemap) => {
     const currentLocations = get().locations;
     const currentRelations = get().relations;
     let added = 0;
     let updated = 0;
+    let skipped = 0;
+    let savedAsNew = 0;
+    let locationRefRemappedCount = 0;
+    const idRemap = new Map<string, string>();
 
-    const validation = validateImportedData(currentLocations, imported);
+    const currentLocationIds = new Set(currentLocations.map((loc) => loc.id));
+    const remappedRelations = imported.map((rel) => {
+      const newFromId = locationIdRemap?.has(rel.fromId) ? locationIdRemap.get(rel.fromId)! : rel.fromId;
+      const newToId = locationIdRemap?.has(rel.toId) ? locationIdRemap.get(rel.toId)! : rel.toId;
+      if (newFromId !== rel.fromId || newToId !== rel.toId) {
+        locationRefRemappedCount++;
+      }
+      return { ...rel, fromId: newFromId, toId: newToId };
+    });
+
+    const allValidLocationIds = new Set([...currentLocationIds]);
+    if (locationIdRemap) {
+      locationIdRemap.forEach((newId) => allValidLocationIds.add(newId));
+    }
+
+    const validation = validateImportedData(
+      Array.from(allValidLocationIds).map(id => ({ id } as DreamLocation)),
+      remappedRelations
+    );
     const validImported = validation.validRelations;
-    const skipped = validation.invalidRelationCount;
+    skipped += validation.invalidRelationCount;
 
     if (validation.invalidRelationCount > 0) {
       console.warn(
@@ -645,29 +719,50 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       set({ relations: validImported, selectedRelationId: null });
       saveDreamRelations(validImported);
       saveDreamDataWithVersion(currentLocations, validImported);
-      return { added: validImported.length, updated: 0, skipped };
+      return { added: validImported.length, updated: 0, skipped, savedAsNew: 0, idRemap, locationRefRemappedCount };
     }
 
+    const defaultResolution: ConflictResolution = resolutions?.default ?? 'overwrite';
     const existingMap = new Map(currentRelations.map((rel) => [rel.id, rel]));
     const result: DreamRelation[] = [...currentRelations];
+    const now = new Date().toISOString();
 
     validImported.forEach((item) => {
-      if (existingMap.has(item.id)) {
-        const index = result.findIndex((rel) => rel.id === item.id);
-        if (index !== -1) {
-          result[index] = { ...item, updatedAt: new Date().toISOString() };
-          updated++;
-        }
-      } else {
+      if (!existingMap.has(item.id)) {
         result.push(item);
         added++;
+        return;
+      }
+
+      const resolution = resolutions?.perItem?.[item.id] ?? defaultResolution;
+
+      if (resolution === 'skip') {
+        skipped++;
+        return;
+      }
+
+      if (resolution === 'overwrite') {
+        const index = result.findIndex((rel) => rel.id === item.id);
+        if (index !== -1) {
+          result[index] = { ...item, updatedAt: now };
+          updated++;
+        }
+        return;
+      }
+
+      if (resolution === 'saveAsNew') {
+        const newId = generateId();
+        idRemap.set(item.id, newId);
+        result.push({ ...item, id: newId, createdAt: now, updatedAt: now });
+        savedAsNew++;
+        return;
       }
     });
 
     set({ relations: result });
     saveDreamRelations(result);
     saveDreamDataWithVersion(currentLocations, result);
-    return { added, updated, skipped };
+    return { added, updated, skipped, savedAsNew, idRemap, locationRefRemappedCount };
   },
 
   exportRelations: () => {

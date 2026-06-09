@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DreamLocation, DreamRelation, RelationType } from '@/types';
-import { loadDreamLocations, saveDreamLocations, loadDreamRelations, saveDreamRelations, generateId } from '@/utils/storage';
+import { saveDreamLocations, saveDreamRelations, generateId } from '@/utils/storage';
+import { runMigrations, saveDreamDataWithVersion, validateImportedData } from '@/utils/storageMigration';
 
 export function filterLocations(
   locations: DreamLocation[],
@@ -37,10 +38,19 @@ export function filterLocations(
   });
 }
 
+export type ViewMode = 'map' | 'cluster';
+export type EventTypeFilter = 'create' | 'update';
+
 interface FilterState {
   searchText: string;
   frequency: string;
   selectedTags: string[];
+  timelineEventTypes: EventTypeFilter[];
+}
+
+interface SavedPosition {
+  positionX: number;
+  positionY: number;
 }
 
 interface DreamState {
@@ -55,6 +65,9 @@ interface DreamState {
   defaultFromId: string | null;
   isSidebarOpen: boolean;
   filters: FilterState;
+  viewMode: ViewMode;
+  savedMapPositions: Map<string, SavedPosition>;
+  clusterPositions: Map<string, { positionX: number; positionY: number }>;
 }
 
 interface DreamActions {
@@ -78,6 +91,8 @@ interface DreamActions {
   setFrequencyFilter: (frequency: string) => void;
   toggleTagFilter: (tag: string) => void;
   clearTagFilter: () => void;
+  toggleTimelineEventType: (type: EventTypeFilter) => void;
+  clearTimelineEventTypes: () => void;
   clearFilters: () => void;
   getFilteredLocations: () => DreamLocation[];
   getAllTags: () => string[];
@@ -85,6 +100,10 @@ interface DreamActions {
   exportLocations: () => DreamLocation[];
   importRelations: (imported: DreamRelation[], mode: 'merge' | 'replace') => { added: number; updated: number; skipped: number };
   exportRelations: () => DreamRelation[];
+  setViewMode: (mode: ViewMode) => void;
+  setClusterPosition: (id: string, x: number, y: number) => void;
+  setClusterPositions: (positions: Map<string, { positionX: number; positionY: number }>) => void;
+  getDisplayPosition: (id: string) => { positionX: number; positionY: number };
 }
 
 export type DreamStore = DreamState & DreamActions;
@@ -104,7 +123,11 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     searchText: '',
     frequency: '',
     selectedTags: [],
+    timelineEventTypes: [],
   },
+  viewMode: 'map',
+  savedMapPositions: new Map(),
+  clusterPositions: new Map(),
 
   addLocation: (data) => {
     const now = new Date().toISOString();
@@ -123,8 +146,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       updatedAt: now,
     };
     const newLocations = [...get().locations, newLocation];
+    const currentRelations = get().relations;
     set({ locations: newLocations });
     saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   updateLocation: (id, data) => {
@@ -133,8 +158,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         ? { ...loc, ...data, updatedAt: new Date().toISOString() }
         : loc
     );
+    const currentRelations = get().relations;
     set({ locations: newLocations });
     saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   deleteLocation: (id) => {
@@ -149,6 +176,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     });
     saveDreamLocations(newLocations);
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(newLocations, newRelations);
   },
 
   updatePosition: (id, x, y) => {
@@ -157,8 +185,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         ? { ...loc, positionX: x, positionY: y, updatedAt: new Date().toISOString() }
         : loc
     );
+    const currentRelations = get().relations;
     set({ locations: newLocations });
     saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 
   selectLocation: (id) => {
@@ -191,8 +221,10 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       updatedAt: now,
     };
     const newRelations = [...get().relations, newRelation];
+    const currentLocations = get().locations;
     set({ relations: newRelations });
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   updateRelation: (id, data) => {
@@ -201,17 +233,21 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
         ? { ...rel, ...data, updatedAt: new Date().toISOString() }
         : rel
     );
+    const currentLocations = get().locations;
     set({ relations: newRelations });
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   deleteRelation: (id) => {
     const newRelations = get().relations.filter((rel) => rel.id !== id);
+    const currentLocations = get().locations;
     set({
       relations: newRelations,
       selectedRelationId: get().selectedRelationId === id ? null : get().selectedRelationId,
     });
     saveDreamRelations(newRelations);
+    saveDreamDataWithVersion(currentLocations, newRelations);
   },
 
   getRelationsForLocation: (locationId) => {
@@ -302,12 +338,30 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     }));
   },
 
+  toggleTimelineEventType: (type) => {
+    set((state) => {
+      const timelineEventTypes = state.filters.timelineEventTypes.includes(type)
+        ? state.filters.timelineEventTypes.filter((t) => t !== type)
+        : [...state.filters.timelineEventTypes, type];
+      return {
+        filters: { ...state.filters, timelineEventTypes },
+      };
+    });
+  },
+
+  clearTimelineEventTypes: () => {
+    set((state) => ({
+      filters: { ...state.filters, timelineEventTypes: [] },
+    }));
+  },
+
   clearFilters: () => {
     set({
       filters: {
         searchText: '',
         frequency: '',
         selectedTags: [],
+        timelineEventTypes: [],
       },
     });
   },
@@ -326,20 +380,31 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
   importLocations: (imported, mode) => {
     const currentLocations = get().locations;
+    const currentRelations = get().relations;
     let added = 0;
     let updated = 0;
 
+    const validation = validateImportedData(imported, []);
+    const validImported = validation.validLocations;
+    const skipped = validation.invalidLocationCount;
+
+    if (validation.invalidLocationCount > 0) {
+      console.warn(
+        `[Import] Skipped ${validation.invalidLocationCount} invalid location records during import`
+      );
+    }
+
     if (mode === 'replace') {
-      set({ locations: imported, selectedLocationId: null });
-      saveDreamLocations(imported);
-      added = imported.length;
-      return { added, updated: 0, skipped: 0 };
+      set({ locations: validImported, selectedLocationId: null });
+      saveDreamLocations(validImported);
+      saveDreamDataWithVersion(validImported, currentRelations);
+      return { added: validImported.length, updated: 0, skipped };
     }
 
     const existingMap = new Map(currentLocations.map((loc) => [loc.id, loc]));
     const result: DreamLocation[] = [...currentLocations];
 
-    imported.forEach((item) => {
+    validImported.forEach((item) => {
       if (existingMap.has(item.id)) {
         const index = result.findIndex((loc) => loc.id === item.id);
         if (index !== -1) {
@@ -354,7 +419,8 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
     set({ locations: result });
     saveDreamLocations(result);
-    return { added, updated, skipped: 0 };
+    saveDreamDataWithVersion(result, currentRelations);
+    return { added, updated, skipped };
   },
 
   exportLocations: () => {
@@ -362,21 +428,32 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
   },
 
   importRelations: (imported, mode) => {
+    const currentLocations = get().locations;
     const currentRelations = get().relations;
     let added = 0;
     let updated = 0;
 
+    const validation = validateImportedData(currentLocations, imported);
+    const validImported = validation.validRelations;
+    const skipped = validation.invalidRelationCount;
+
+    if (validation.invalidRelationCount > 0) {
+      console.warn(
+        `[Import] Skipped ${validation.invalidRelationCount} invalid relation records during import`
+      );
+    }
+
     if (mode === 'replace') {
-      set({ relations: imported, selectedRelationId: null });
-      saveDreamRelations(imported);
-      added = imported.length;
-      return { added, updated: 0, skipped: 0 };
+      set({ relations: validImported, selectedRelationId: null });
+      saveDreamRelations(validImported);
+      saveDreamDataWithVersion(currentLocations, validImported);
+      return { added: validImported.length, updated: 0, skipped };
     }
 
     const existingMap = new Map(currentRelations.map((rel) => [rel.id, rel]));
     const result: DreamRelation[] = [...currentRelations];
 
-    imported.forEach((item) => {
+    validImported.forEach((item) => {
       if (existingMap.has(item.id)) {
         const index = result.findIndex((rel) => rel.id === item.id);
         if (index !== -1) {
@@ -391,16 +468,94 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
 
     set({ relations: result });
     saveDreamRelations(result);
-    return { added, updated, skipped: 0 };
+    saveDreamDataWithVersion(currentLocations, result);
+    return { added, updated, skipped };
   },
 
   exportRelations: () => {
     return get().relations;
   },
+
+  setViewMode: (mode) => {
+    const currentMode = get().viewMode;
+    if (currentMode === mode) return;
+
+    const locations = get().locations;
+
+    if (mode === 'cluster') {
+      const savedMapPositions = new Map<string, SavedPosition>();
+      locations.forEach((loc) => {
+        savedMapPositions.set(loc.id, {
+          positionX: loc.positionX,
+          positionY: loc.positionY,
+        });
+      });
+
+      set({ viewMode: mode, savedMapPositions });
+    } else {
+      const savedMapPositions = get().savedMapPositions;
+      const newLocations = locations.map((loc) => {
+        const saved = savedMapPositions.get(loc.id);
+        if (saved) {
+          return { ...loc, positionX: saved.positionX, positionY: saved.positionY };
+        }
+        return loc;
+      });
+
+      const currentRelations = get().relations;
+      set({
+        viewMode: mode,
+        locations: newLocations,
+      });
+      saveDreamLocations(newLocations);
+      saveDreamDataWithVersion(newLocations, currentRelations);
+    }
+  },
+
+  setClusterPosition: (id, x, y) => {
+    const clusterPositions = new Map(get().clusterPositions);
+    clusterPositions.set(id, { positionX: x, positionY: y });
+    set({ clusterPositions });
+  },
+
+  setClusterPositions: (positions) => {
+    set({ clusterPositions: new Map(positions) });
+  },
+
+  getDisplayPosition: (id) => {
+    const state = get();
+    if (state.viewMode === 'cluster') {
+      const pos = state.clusterPositions.get(id);
+      if (pos) {
+        return { positionX: pos.positionX, positionY: pos.positionY };
+      }
+    }
+    const loc = state.locations.find((l) => l.id === id);
+    return loc
+      ? { positionX: loc.positionX, positionY: loc.positionY }
+      : { positionX: 50, positionY: 50 };
+  },
 }));
 
 export function initializeDreamStore(): void {
-  const locations = loadDreamLocations();
-  const relations = loadDreamRelations();
-  useDreamStore.setState({ locations, relations });
+  const migrationResult = runMigrations();
+  const { locations, relations } = migrationResult;
+
+  if (migrationResult.migrated) {
+    console.info(
+      `[Storage Migration] Migrated from v${migrationResult.fromVersion} to v${migrationResult.toVersion}. ` +
+      `Filtered ${migrationResult.filteredCount} corrupted records. ` +
+      `Backup created: ${migrationResult.backupCreated}`
+    );
+  }
+
+  const savedMapPositions = new Map<string, SavedPosition>();
+  locations.forEach((loc) => {
+    savedMapPositions.set(loc.id, {
+      positionX: loc.positionX,
+      positionY: loc.positionY,
+    });
+  });
+
+  useDreamStore.setState({ locations, relations, savedMapPositions });
 }

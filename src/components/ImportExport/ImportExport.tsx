@@ -328,9 +328,10 @@ export function ImportExport() {
     };
   };
 
-  const handleExport = (type: ExportDataType = exportType) => {
+  const handleExport = (type: ExportDataType = exportType, filteredOnly = effectiveFilteredOnly) => {
     setExportType(type);
-    const data = buildExportData(type, effectiveFilteredOnly);
+    setExportFilteredOnly(filteredOnly);
+    const data = buildExportData(type, filteredOnly);
     const hasLocations = data.locations.length > 0;
     const hasRelations = data.relations.length > 0;
 
@@ -524,8 +525,7 @@ export function ImportExport() {
 
                     <button
                       onClick={() => {
-                        setExportFilteredOnly(true);
-                        handleExport('all');
+                        handleExport('all', true);
                       }}
                       className="w-full px-4 py-2.5 text-left text-sm text-purple-100 hover:bg-purple-500/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
                     >
@@ -539,8 +539,7 @@ export function ImportExport() {
                     </button>
                     <button
                       onClick={() => {
-                        setExportFilteredOnly(true);
-                        handleExport('locations');
+                        handleExport('locations', true);
                       }}
                       className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
                     >
@@ -554,8 +553,7 @@ export function ImportExport() {
                     </button>
                     <button
                       onClick={() => {
-                        setExportFilteredOnly(true);
-                        handleExport('relations');
+                        handleExport('relations', true);
                       }}
                       className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
                     >
@@ -580,8 +578,7 @@ export function ImportExport() {
 
                 <button
                   onClick={() => {
-                    setExportFilteredOnly(false);
-                    handleExport('all');
+                    handleExport('all', false);
                   }}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
                 >
@@ -595,8 +592,7 @@ export function ImportExport() {
                 </button>
                 <button
                   onClick={() => {
-                    setExportFilteredOnly(false);
-                    handleExport('locations');
+                    handleExport('locations', false);
                   }}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2 border-b border-purple-300/5"
                 >
@@ -610,8 +606,7 @@ export function ImportExport() {
                 </button>
                 <button
                   onClick={() => {
-                    setExportFilteredOnly(false);
-                    handleExport('relations');
+                    handleExport('relations', false);
                   }}
                   className="w-full px-4 py-2.5 text-left text-sm text-purple-100/80 hover:bg-white/10 transition-colors flex items-center gap-2"
                 >

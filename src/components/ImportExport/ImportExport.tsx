@@ -426,7 +426,7 @@ export function ImportExport() {
         updated: relationResult.updated,
         skipped: relationResult.skipped + preview.invalidRelationCount + preview.internalDuplicateRelationCount + preview.orphanRelations.length,
         savedAsNew: relationResult.savedAsNew,
-        remapped: relationResult.locationRefRemappedCount + relationResult.savedAsNew,
+        remapped: relationResult.locationRefRemappedCount,
       },
     });
     setConfirmDialog(null);

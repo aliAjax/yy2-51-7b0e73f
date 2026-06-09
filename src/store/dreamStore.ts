@@ -687,7 +687,6 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     let locationRefRemappedCount = 0;
     const idRemap = new Map<string, string>();
 
-    const currentLocationIds = new Set(currentLocations.map((loc) => loc.id));
     const remappedRelations = imported.map((rel) => {
       const newFromId = locationIdRemap?.has(rel.fromId) ? locationIdRemap.get(rel.fromId)! : rel.fromId;
       const newToId = locationIdRemap?.has(rel.toId) ? locationIdRemap.get(rel.toId)! : rel.toId;
@@ -697,15 +696,7 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
       return { ...rel, fromId: newFromId, toId: newToId };
     });
 
-    const allValidLocationIds = new Set([...currentLocationIds]);
-    if (locationIdRemap) {
-      locationIdRemap.forEach((newId) => allValidLocationIds.add(newId));
-    }
-
-    const validation = validateImportedData(
-      Array.from(allValidLocationIds).map(id => ({ id } as DreamLocation)),
-      remappedRelations
-    );
+    const validation = validateImportedData(currentLocations, remappedRelations);
     const validImported = validation.validRelations;
     skipped += validation.invalidRelationCount;
 

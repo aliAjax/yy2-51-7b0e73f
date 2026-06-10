@@ -19,13 +19,21 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
   const [selectedLayout, setSelectedLayout] = useState<LayoutType>('tag-cluster');
   const [isApplying, setIsApplying] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const filteredLocations = useMemo(
     () => filterLocations(locations, relations, filters),
     [locations, relations, filters]
   );
 
-  const targetLocations = filteredLocations.length > 0 ? filteredLocations : locations;
+  const hasActiveFilters =
+    !!filters.searchText.trim() ||
+    !!filters.frequency ||
+    filters.selectedTags.length > 0 ||
+    filters.selectedPeople.length > 0 ||
+    filters.selectedRelationTypes.length > 0;
+
+  const targetLocations = hasActiveFilters ? filteredLocations : locations;
 
   const preview = useMemo(() => {
     if (targetLocations.length === 0) return null;
@@ -34,17 +42,27 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
 
   if (!open) return null;
 
+  const handleClose = () => {
+    setIsConfirming(false);
+    onClose();
+  };
+
   const handleApply = () => {
     if (!preview || preview.positions.size === 0) return;
+    if (!isConfirming) {
+      setIsConfirming(true);
+      return;
+    }
     setIsApplying(true);
     setTimeout(() => {
       applyLayoutToLocations(preview.positions);
       setIsApplying(false);
       setIsSuccess(true);
+      setIsConfirming(false);
       setTimeout(() => {
         setIsSuccess(false);
         onApplied?.(preview.description);
-        onClose();
+        handleClose();
       }, 500);
     }, 300);
   };
@@ -62,7 +80,7 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
 
       <div
         className="relative w-full max-w-lg rounded-2xl animate-scale-in overflow-hidden"
@@ -96,7 +114,7 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-colors"
           >
             <X size={20} />
@@ -111,7 +129,10 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
               return (
                 <button
                   key={type}
-                  onClick={() => setSelectedLayout(type)}
+                  onClick={() => {
+                    setSelectedLayout(type);
+                    setIsConfirming(false);
+                  }}
                   className={`relative p-4 rounded-xl text-left transition-all ${
                     isSelected
                       ? 'bg-purple-500/20 border-purple-400/50'
@@ -192,21 +213,28 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
               </span>
             </div>
             <p className="text-sm text-purple-100/90">
-              {preview?.description || '暂无可用地点'}
+              {preview?.description || (hasActiveFilters ? '当前筛选条件下没有可见地点' : '暂无可用地点')}
             </p>
-            {filters.selectedTags.length > 0 ||
-            filters.selectedPeople.length > 0 ||
-            filters.searchText ||
-            filters.frequency ? (
+            {hasActiveFilters && targetLocations.length > 0 ? (
               <p className="text-xs text-amber-300/70 mt-2">
                 ⚠ 当前有筛选条件激活，将仅对可见节点应用布局
+              </p>
+            ) : null}
+            {hasActiveFilters && targetLocations.length === 0 ? (
+              <p className="text-xs text-amber-300/70 mt-2">
+                当前筛选条件下没有可见节点，请调整筛选后再应用布局
+              </p>
+            ) : null}
+            {isConfirming && preview ? (
+              <p className="text-xs text-purple-100/80 mt-3 p-3 rounded-lg bg-purple-500/15 border border-purple-300/20">
+                确认要应用「{LAYOUT_INFO[selectedLayout].name}」吗？这会更新 {targetLocations.length} 个地点的坐标并保存。
               </p>
             ) : null}
           </div>
 
           <div className="pt-2 flex gap-3">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               disabled={isApplying || isSuccess}
               className="flex-1 py-3 px-4 rounded-lg text-sm font-medium text-purple-200/70 bg-white/5 border border-purple-300/20 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -236,7 +264,7 @@ export function LayoutDialog({ open, onClose, onApplied }: LayoutDialogProps) {
               ) : (
                 <>
                   <Sparkles size={16} />
-                  应用布局
+                  {isConfirming ? '确认应用' : '应用布局'}
                 </>
               )}
             </button>

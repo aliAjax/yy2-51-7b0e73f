@@ -232,6 +232,7 @@ interface DreamActions {
   getExploreVisibleLocationIds: () => Set<string>;
   getExploreVisibleRelations: () => DreamRelation[];
   getExploreLocations: () => DreamLocation[];
+  applyLayoutToLocations: (positions: Map<string, { positionX: number; positionY: number }>) => void;
 }
 
 export type DreamStore = DreamState & DreamActions;
@@ -1159,6 +1160,38 @@ export const useDreamStore = create<DreamStore>((set, get) => ({
     const state = get();
     const visibleIds = state.getExploreVisibleLocationIds();
     return state.locations.filter((loc) => visibleIds.has(loc.id));
+  },
+
+  applyLayoutToLocations: (positions) => {
+    const state = get();
+    const snapshot = takeSnapshot(state);
+    const now = new Date().toISOString();
+    const newLocations = state.locations.map((loc) => {
+      const pos = positions.get(loc.id);
+      if (pos) {
+        return {
+          ...loc,
+          positionX: pos.positionX,
+          positionY: pos.positionY,
+          updatedAt: now,
+        };
+      }
+      return loc;
+    });
+    const currentRelations = state.relations;
+    set({
+      locations: newLocations,
+      undo: {
+        canUndo: true,
+        actionType: 'updatePosition',
+        actionLabel: '自动布局',
+        snapshot,
+        expireAt: Date.now() + UNDO_TIMEOUT_MS,
+      },
+    });
+    scheduleUndoClear();
+    saveDreamLocations(newLocations);
+    saveDreamDataWithVersion(newLocations, currentRelations);
   },
 }));
 

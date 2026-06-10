@@ -1,4 +1,4 @@
-import { ZoomIn, ZoomOut, Maximize2, Play, Grid3X3, Map, Home } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Play, Grid3X3, Map, Home, Sparkles } from 'lucide-react';
 import { hexToRgba } from '@/utils/storage';
 import type { ViewMode } from '@/store/dreamStore';
 
@@ -17,6 +17,8 @@ interface MapControlsProps {
   canPlayback?: boolean;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
+  onOpenLayoutDialog?: () => void;
+  canLayout?: boolean;
 }
 
 export function MapControls({
@@ -34,6 +36,8 @@ export function MapControls({
   canPlayback,
   viewMode = 'map',
   onViewModeChange,
+  onOpenLayoutDialog,
+  canLayout,
 }: MapControlsProps) {
   const scalePercentage = Math.round(scale * 100);
 
@@ -157,6 +161,23 @@ export function MapControls({
               title="梦境回顾播放"
             >
               <Play size={18} />
+            </button>
+          </>
+        )}
+
+        {onOpenLayoutDialog && (
+          <>
+            <div className="px-2 py-0.5">
+              <div className="h-px bg-purple-300/10" />
+            </div>
+
+            <button
+              onClick={onOpenLayoutDialog}
+              disabled={!canLayout}
+              className={`${buttonBaseClass} ${canLayout ? buttonActiveClass : buttonDisabledClass}`}
+              title="自动布局"
+            >
+              <Sparkles size={18} />
             </button>
           </>
         )}

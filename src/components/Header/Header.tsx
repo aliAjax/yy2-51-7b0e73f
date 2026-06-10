@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Moon, Plus, BarChart3, Clock, Undo2 } from 'lucide-react';
+import { Moon, Plus, BarChart3, Clock, Undo2, Sparkles } from 'lucide-react';
 import { useDreamStore } from '@/store/dreamStore';
 import { ImportExport } from '@/components/ImportExport/ImportExport';
 import { DreamStatsPanel } from '@/components/DreamStatsPanel/DreamStatsPanel';
 
-export function Header() {
+interface HeaderProps {
+  onOpenLayoutDialog?: () => void;
+}
+
+export function Header({ onOpenLayoutDialog }: HeaderProps) {
   const navigate = useNavigate();
   const locations = useDreamStore((state) => state.locations);
   const relations = useDreamStore((state) => state.relations);
   const openForm = useDreamStore((state) => state.openForm);
   const undoState = useDreamStore((state) => state.undo);
+  const viewMode = useDreamStore((state) => state.viewMode);
+  const isExploreMode = useDreamStore((state) => state.isExploreMode);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
 
@@ -140,6 +146,21 @@ export function Header() {
           >
             <Clock size={18} className="transition-transform group-hover:scale-110" />
           </button>
+
+          {onOpenLayoutDialog && (
+            <button
+              onClick={onOpenLayoutDialog}
+              disabled={locations.length === 0 || viewMode !== 'map' || isExploreMode}
+              className={`relative p-2.5 rounded-xl transition-all group ${
+                locations.length > 0 && viewMode === 'map' && !isExploreMode
+                  ? 'text-purple-200/70 bg-white/5 border border-purple-300/20 hover:text-purple-100 hover:bg-white/10'
+                  : 'text-purple-300/30 bg-white/5 border border-purple-300/10 cursor-not-allowed'
+              }`}
+              title="自动布局"
+            >
+              <Sparkles size={18} className="transition-transform group-hover:scale-110" />
+            </button>
+          )}
 
           <ImportExport />
 

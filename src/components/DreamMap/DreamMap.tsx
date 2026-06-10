@@ -16,6 +16,10 @@ interface ViewTransform {
   offsetY: number;
 }
 
+interface DreamMapProps {
+  onOpenLayoutDialog?: () => void;
+}
+
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 3;
 const ZOOM_STEP = 0.1;
@@ -78,7 +82,7 @@ function clampOffset(
   };
 }
 
-export function DreamMap() {
+export function DreamMap({ onOpenLayoutDialog }: DreamMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const transformLayerRef = useRef<HTMLDivElement>(null);
   const locations = useDreamStore((state) => state.locations);
@@ -1213,6 +1217,8 @@ export function DreamMap() {
           canPlayback={hasResults && !isPlaybackMode && !isExploreMode}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          onOpenLayoutDialog={onOpenLayoutDialog}
+          canLayout={locations.length > 0 && !isPlaybackMode && !isExploreMode && viewMode === 'map'}
         />
       )}
 
